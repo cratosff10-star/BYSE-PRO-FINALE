@@ -37,7 +37,7 @@ export const GENDER_WEIGHTS = [0.48, 0.48, 0.04];
 
 export const FULFILL_WEIGHTS = [0.75, 0.25];
 
-export const money = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+export const money = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
