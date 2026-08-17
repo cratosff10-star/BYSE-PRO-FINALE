@@ -1,11 +1,488 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Users, Package, ShoppingCart, BarChart3, Store, MessageCircle, Gift, Printer, Plus, Search, Moon, Sun, Trash2, X, ChevronRight, ChevronLeft, Award, Percent, Eye, EyeOff, Edit2, Check, User, Lock, Menu, Bell, Clipboard, MoreVertical, Tag, Heart, ScanLine, List, History, LayoutGrid, TrendingUp, Share2, Calculator, CreditCard, Truck, Video, Music, Type, Mail, Wallet, Banknote, Save } from "lucide-react";
-import { FONT_BODY, FONT_DISPLAY, SUCCESS, DANGER, CHANNELS, GENDERS, FULFILLMENTS, MONTH_NAMES, MONTH_SHORT, WEEKDAY_LABELS, WEEKDAY_SHORT, seedCustomers, seedProducts, seedSellers, paymentMethods, HOUR_WEIGHTS, DOW_WEIGHTS, HOUR_SLOTS, CHANNEL_WEIGHTS, GENDER_WEIGHTS, FULFILL_WEIGHTS, PRESET_COLORS, seedSales, allSeedSales, seedAdEntries, seedFiados } from "../data/constants";
-import { money, formatDateShort, formatDateBadge, formatDateLong, inPeriod, sameOrBefore, sendWhatsAppMessage, sendSMS, fiadoDate, inputStyle, lbl, ghostBtn, hexAlpha } from "../utils/helpers";
-import { SectionTitle, StatCard, FinanceRow, HBar, WaveChart, Pill, SLabel, PeriodHeader, PeriodModal, SingleDatePicker, MenuGridScreen, LogoMark, VipWelcome } from "../components/common";
-import type { Product, Customer, Seller, Sale, StockLocation, AdEntry, WaScheduleEntry, WelcomeConfig } from "../types";
 
-function Cashback({ customers, setCustomers, cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }) {   const [editingId, setEditingId] = useState(null);   const [editValue, setEditValue] = useState("");   const startEdit = (c) => { setEditingId(c.id); setEditValue(String(c.cashback)); };   const saveEdit = (id) => { setCustomers(customers.map((c) => (c.id === id ? { ...c, cashback: parseFloat(editValue) || 0 } : c))); setEditingId(null); };   return (     <div>       <SectionTitle title="Cashback" sub="Programa de fidelização por porcentagem de compra" subtext={subtext} />       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>         <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 18, flex: 1, minWidth: 220 }}>           <label style={{ fontSize: 13, color: subtext }}>Porcentagem de cashback por compra</label>           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}><input type="range" min="0" max="15" step="0.5" value={cashbackPct} onChange={(e) => setCashbackPct(parseFloat(e.target.value))} style={{ flex: 1, accentColor: accent }} /><div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: accent, minWidth: 50 }}>{cashbackPct}%</div></div>         </div>         <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 18, flex: 1, minWidth: 220 }}>           <label style={{ fontSize: 13, color: subtext }}>Validade do cashback (dias após ganho)</label>           <input type="number" value={cashbackValidityDays} onChange={(e) => setCashbackValidityDays(parseInt(e.target.value) || 0)} style={{ ...inputStyle(border, text), width: "100%", marginTop: 8 }} />           <div style={{ fontSize: 11, color: subtext, marginTop: 6 }}>Os lembretes de saldo são enviados pela aba WhatsApp, nos dias configurados lá.</div>         </div>       </div>       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", padding: "10px 14px", fontSize: 11, color: subtext, fontWeight: 700, borderBottom: `1px solid ${border}`, textTransform: "uppercase" }}><div>Cliente</div><div>Saldo cashback</div><div>Lembrete WhatsApp</div></div>         {customers.map((c, i) => (           <div key={c.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", padding: "12px 14px", fontSize: 13, alignItems: "center", borderBottom: i < customers.length - 1 ? `1px solid ${border}` : "none" }}>             <div style={{ fontWeight: 600 }}>{c.name}</div>             {editingId === c.id ? (<div style={{ display: "flex", gap: 6, alignItems: "center" }}><input value={editValue} onChange={(e) => setEditValue(e.target.value)} type="number" style={{ ...inputStyle(border, text), width: 80 }} /><button onClick={() => saveEdit(c.id)} style={{ background: accent, border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer" }}><Check size={12} color="#fff" /></button></div>) : (<div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ fontWeight: 800, color: accent }}>{money(c.cashback)}</span><button onClick={() => startEdit(c)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Edit2 size={12} color={subtext} /></button></div>)}             <div style={{ color: subtext, fontSize: 12 }}>"Oi {c.name.split(" ")[0]}, você tem {money(c.cashback)} em cashback te esperando! 🎁"</div>           </div>         ))}       </div>     </div>   ); }
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  Users,
+  Package,
+  ShoppingCart,
+  BarChart3,
+  Store,
+  MessageCircle,
+  Gift,
+  Printer,
+  Plus,
+  Search,
+  Moon,
+  Sun,
+  Trash2,
+  X,
+  ChevronRight,
+  ChevronLeft,
+  Award,
+  Percent,
+  Eye,
+  EyeOff,
+  Edit2,
+  Check,
+  User,
+  Lock,
+  Menu,
+  Bell,
+  Clipboard,
+  MoreVertical,
+  Tag,
+  Heart,
+  ScanLine,
+  List,
+  History,
+  LayoutGrid,
+  TrendingUp,
+  Share2,
+  Calculator,
+  CreditCard,
+  Truck,
+  Video,
+  Music,
+  Type,
+  Mail,
+  Wallet,
+  Banknote,
+  Save
+} from "lucide-react";
+
+import {
+  FONT_BODY,
+  FONT_DISPLAY,
+  SUCCESS,
+  DANGER,
+  CHANNELS,
+  GENDERS,
+  FULFILLMENTS,
+  MONTH_NAMES,
+  MONTH_SHORT,
+  WEEKDAY_LABELS,
+  WEEKDAY_SHORT,
+  seedCustomers,
+  seedProducts,
+  seedSellers,
+  paymentMethods,
+  HOUR_WEIGHTS,
+  DOW_WEIGHTS,
+  HOUR_SLOTS,
+  CHANNEL_WEIGHTS,
+  GENDER_WEIGHTS,
+  FULFILL_WEIGHTS,
+  PRESET_COLORS,
+  seedSales,
+  allSeedSales,
+  seedAdEntries,
+  seedFiados
+} from "../data/constants";
+
+import {
+  money,
+  formatDateShort,
+  formatDateBadge,
+  formatDateLong,
+  inPeriod,
+  sameOrBefore,
+  sendWhatsAppMessage,
+  sendSMS,
+  fiadoDate,
+  inputStyle,
+  lbl,
+  ghostBtn,
+  hexAlpha
+} from "../utils/helpers";
+
+import {
+  SectionTitle,
+  StatCard,
+  FinanceRow,
+  HBar,
+  WaveChart,
+  Pill,
+  SLabel,
+  PeriodHeader,
+  PeriodModal,
+  SingleDatePicker,
+  MenuGridScreen,
+  LogoMark,
+  VipWelcome
+} from "../components/common";
+
+import type {
+  Product,
+  Customer,
+  Seller,
+  Sale,
+  StockLocation,
+  AdEntry,
+  WaScheduleEntry,
+  WelcomeConfig
+} from "../types";
+
+
+function Cashback({
+  customers,
+  setCustomers,
+  cashbackPct,
+  setCashbackPct,
+  cashbackValidityDays,
+  setCashbackValidityDays,
+  card,
+  border,
+  subtext,
+  accent,
+  text
+}) {
+
+  const [editingId, setEditingId] = useState(null);
+
+  const [editValue, setEditValue] = useState("");
+
+
+  const startEdit = (c) => {
+
+    setEditingId(c.id);
+
+    setEditValue(String(c.cashback));
+
+  };
+
+
+  const saveEdit = (id) => {
+
+    setCustomers(
+      customers.map(
+        (c) =>
+          c.id === id
+            ? {
+                ...c,
+                cashback: parseFloat(editValue) || 0
+              }
+            : c
+      )
+    );
+
+    setEditingId(null);
+
+  };
+
+
+  return (
+
+    <div>
+
+      <SectionTitle
+        title="Cashback"
+        sub="Programa de fidelização por porcentagem de compra"
+        subtext={subtext}
+      />
+
+
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 16
+        }}
+      >
+
+
+        <div
+          style={{
+            background: card,
+            border: `1px solid ${border}`,
+            borderRadius: 12,
+            padding: 18,
+            flex: 1,
+            minWidth: 220
+          }}
+        >
+
+          <label
+            style={{
+              fontSize: 13,
+              color: subtext
+            }}
+          >
+            Porcentagem de cashback por compra
+          </label>
+
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginTop: 8
+            }}
+          >
+
+            <input
+              type="range"
+              min="0"
+              max="15"
+              step="0.5"
+              value={cashbackPct}
+              onChange={(e) =>
+                setCashbackPct(
+                  parseFloat(e.target.value)
+                )
+              }
+              style={{
+                flex: 1,
+                accentColor: accent
+              }}
+            />
+
+
+            <div
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: 22,
+                color: accent,
+                minWidth: 50
+              }}
+            >
+              {cashbackPct}%
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div
+          style={{
+            background: card,
+            border: `1px solid ${border}`,
+            borderRadius: 12,
+            padding: 18,
+            flex: 1,
+            minWidth: 220
+          }}
+        >
+
+          <label
+            style={{
+              fontSize: 13,
+              color: subtext
+            }}
+          >
+            Validade do cashback (dias após ganho)
+          </label>
+
+
+          <input
+            type="number"
+            value={cashbackValidityDays}
+            onChange={(e) =>
+              setCashbackValidityDays(
+                parseInt(e.target.value) || 0
+              )
+            }
+            style={{
+              ...inputStyle(border, text),
+              width: "100%",
+              marginTop: 8
+            }}
+          />
+
+
+          <div
+            style={{
+              fontSize: 11,
+              color: subtext,
+              marginTop: 6
+            }}
+          >
+            Os lembretes de saldo são enviados pela aba WhatsApp, nos dias configurados lá.
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        style={{
+          background: card,
+          border: `1px solid ${border}`,
+          borderRadius: 12,
+          overflow: "hidden"
+        }}
+      >
+
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "2fr 1fr 1fr",
+            padding: "10px 14px",
+            fontSize: 11,
+            color: subtext,
+            fontWeight: 700,
+            borderBottom: `1px solid ${border}`,
+            textTransform: "uppercase"
+          }}
+        >
+
+          <div>
+            Cliente
+          </div>
+
+          <div>
+            Saldo cashback
+          </div>
+
+          <div>
+            Lembrete WhatsApp
+          </div>
+
+        </div>
+
+
+        {customers.map((c, i) => (
+
+          <div
+            key={c.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "2fr 1fr 1fr",
+              padding: "12px 14px",
+              fontSize: 13,
+              alignItems: "center",
+              borderBottom:
+                i < customers.length - 1
+                  ? `1px solid ${border}`
+                  : "none"
+            }}
+          >
+
+
+            <div
+              style={{
+                fontWeight: 600
+              }}
+            >
+              {c.name}
+            </div>
+
+
+            {editingId === c.id ? (
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "center"
+                }}
+              >
+
+                <input
+                  value={editValue}
+                  onChange={(e) =>
+                    setEditValue(e.target.value)
+                  }
+                  type="number"
+                  style={{
+                    ...inputStyle(border, text),
+                    width: 80
+                  }}
+                />
+
+
+                <button
+                  onClick={() =>
+                    saveEdit(c.id)
+                  }
+                  style={{
+                    background: accent,
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "4px 7px",
+                    cursor: "pointer"
+                  }}
+                >
+
+                  <Check
+                    size={12}
+                    color="#fff"
+                  />
+
+                </button>
+
+              </div>
+
+            ) : (
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "center"
+                }}
+              >
+
+                <span
+                  style={{
+                    fontWeight: 800,
+                    color: accent
+                  }}
+                >
+                  {money(c.cashback)}
+                </span>
+
+
+                <button
+                  onClick={() =>
+                    startEdit(c)
+                  }
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0
+                  }}
+                >
+
+                  <Edit2
+                    size={12}
+                    color={subtext}
+                  />
+
+                </button>
+
+              </div>
+
+            )}
+
+
+            <div
+              style={{
+                color: subtext,
+                fontSize: 12
+              }}
+            >
+              "Oi {c.name.split(" ")[0]}, você tem {money(c.cashback)} em cashback te esperando! 🎁"
+            </div>
+
+
+          </div>
+
+        ))}
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
 
 export { Cashback };

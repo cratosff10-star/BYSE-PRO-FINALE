@@ -10,11 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "lucide-react": "^0.468.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.0.2",
