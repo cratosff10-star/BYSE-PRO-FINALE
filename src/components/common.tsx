@@ -1,4 +1,3 @@
-
 // @ts-nocheck
 
 import React, {
@@ -315,7 +314,6 @@ export function LoginScreen({
 
     try {
       setLoading(true);
-      // ✅ DEPOIS (Usando Variável de Ambiente)
       const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
       const response = await fetch(`${API_URL}/api/login`, {
@@ -323,7 +321,6 @@ export function LoginScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      
 
       const data = await response.json();
 
@@ -332,7 +329,10 @@ export function LoginScreen({
         return;
       }
 
-      if (data.user) {
+      // 💾 Salva o token JWT e as informações do usuário no localStorage
+      if (data.token) {
+        localStorage.setItem("byse_token", data.token);
+        localStorage.setItem("byse_user", JSON.stringify(data.user));
         onLogin(data.user);
       }
     } catch (err) {

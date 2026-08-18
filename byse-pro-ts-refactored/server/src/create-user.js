@@ -1,24 +1,27 @@
-const sqlite3 = require('sqlite3').verbose();
-const bcrypt = require('bcryptjs');
+import { db } from './db.js';
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 
-const db = new sqlite3.Database('./database.sqlite'); // Caminho do seu arquivo .sqlite / .db
+async function createUser(name, email, plainPassword) {
+  try {
+    // Normaliza o e-mail para evitar problemas de login depois
+    const cleanEmail = email.trim().toLowerCase();
 
-async function createUser(email, plainPassword) {
-  // 1. Gera o hash da senha por segurança
-  const passwordHash = await bcrypt.hash(plainPassword, 10);
+    // 1. Gera o ID único e o hash da senha
+    const id = randomUUID();
+    const passwordHash = await bcrypt.hash(plainPassword, 10);
 
-  // 2. Insere o usuário na tabela
-  const query = `INSERT INTO users (email, password) VALUES (?, ?)`;
+    // 2. Prepara e executa a inserção com a coluna correta (password_hash)
+    const stmt = db.prepare(
+      'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)'
+    );
+    stmt.run(id, name, cleanEmail, passwordHash);
 
-  db.run(query, [email, passwordHash], function (err) {
-    if (err) {
-      console.error("Erro ao criar usuário:", err.message);
-    } else {
-      console.log(`Usuário criado com sucesso! ID: ${this.lastID}`);
-    }
-    db.close();
-  });
+    console.log(`Usuário criado com sucesso! ID: ${id}`);
+  } catch (err) {
+    console.error('Erro ao criar usuário:', err.message);
+  }
 }
 
 // Executa para criar o seu usuário de teste
-createUser('teste@exemplo.com', 'senha123');
+createUser('Usuário Teste', 'teste@gmail.com', 'senha123');

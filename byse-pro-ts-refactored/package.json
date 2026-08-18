@@ -4,6 +4,8 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.6.0",
     "sqlite3": "^6.0.1"
   }
 }
