@@ -11,8 +11,22 @@ const port = Number(process.env.PORT ?? 3333);
 const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_aqui';
 
 // Configuração do CORS e JSON
-app.use(cors({ origin: 'http://localhost:5173' }));
-app.use(express.json());
+// Define quais domínios podem acessar a API
+const allowedOrigins = [
+  'http://localhost:5173',                   // Seu ambiente de desenvolvimento local
+  process.env.FRONTEND_URL,                   // Sua URL de produção (lida do .env)
+].filter(Boolean);                            // Remove valores indefinidos se FRONTEND_URL não estiver setado
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Permite requisições sem 'origin' (como chamadas de ferramentas de teste como Postman ou do próprio servidor)
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Bloqueado pelo CORS: Origem não permitida.'));
+  },
+  credentials: true
+}));
 
 // ==========================================
 // 1. ROTA DE SAÚDE / HEALTHCHECK
@@ -85,10 +99,11 @@ app.post('/api/users', async (req, res) => {
 
 // Login de Usuário
 app.post('/api/login', async (req, res) => {
+    const emailClean = email.trim().toLowerCase();
   try {
-    const { email, password } = req.body ?? {};
+    const { emailClean, password } = req.body ?? {};
 
-    if (!email || !password) {
+    if (!emailClean || !password) {
       return res.status(400).json({ message: 'E-mail e senha são obrigatórios.' });
     }
 
@@ -180,20 +195,7 @@ app.post('/api/purchases', authenticateToken, (req, res) => {
 
     res.json({ ok: true });
 });
-// Registrar Compra
-app.post('/api/purchases', authenticateToken, (req, res) => {
-    const { id, customerId, total, items, purchasedAt } = req.body ?? {};
-    if (!id || !customerId || !Array.isArray(items)) {
-        return res.status(400).json({ error: 'id, customerId e items são obrigatórios.' });
-    }
 
-    db.prepare(`
-    INSERT OR REPLACE INTO purchases (id, customer_id, total, items_json, purchased_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, customerId, Number(total ?? 0), JSON.stringify(items), purchasedAt ?? new Date().toISOString());
-
-    res.json({ ok: true });
-});
 
 // ==========================================
 // 5. LEMBRETES E CASHBACK (CONFIGURAÇÕES)

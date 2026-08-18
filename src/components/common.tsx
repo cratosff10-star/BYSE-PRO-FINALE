@@ -306,8 +306,8 @@ export function LoginScreen({
 
   const submit = async () => {
     setError("");
-
-    if (!email.includes("@") || !password) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes("@") || !password) {
       setError("Preencha um e-mail válido e uma senha.");
       return;
     }
@@ -319,7 +319,7 @@ export function LoginScreen({
       const response = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email : cleanEmail, password }),
       });
 
       const data = await response.json();
