@@ -137,50 +137,35 @@ function Cashback({
   accent,
   text
 }) {
-
   const [editingId, setEditingId] = useState(null);
-
   const [editValue, setEditValue] = useState("");
 
-
   const startEdit = (c) => {
-
     setEditingId(c.id);
-
     setEditValue(String(c.cashback));
-
   };
-
 
   const saveEdit = (id) => {
-
     setCustomers(
-      customers.map(
-        (c) =>
-          c.id === id
-            ? {
-                ...c,
-                cashback: parseFloat(editValue) || 0
-              }
-            : c
+      customers.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              cashback: parseFloat(editValue) || 0
+            }
+          : c
       )
     );
-
     setEditingId(null);
-
   };
 
-
   return (
-
     <div>
-
       <SectionTitle
         title="Cashback"
         sub="Programa de fidelização por porcentagem de compra"
         subtext={subtext}
       />
-
 
       <div
         style={{
@@ -190,8 +175,6 @@ function Cashback({
           marginBottom: 16
         }}
       >
-
-
         <div
           style={{
             background: card,
@@ -202,7 +185,6 @@ function Cashback({
             minWidth: 220
           }}
         >
-
           <label
             style={{
               fontSize: 13,
@@ -212,7 +194,6 @@ function Cashback({
             Porcentagem de cashback por compra
           </label>
 
-
           <div
             style={{
               display: "flex",
@@ -221,7 +202,6 @@ function Cashback({
               marginTop: 8
             }}
           >
-
             <input
               type="range"
               min="0"
@@ -239,7 +219,6 @@ function Cashback({
               }}
             />
 
-
             <div
               style={{
                 fontFamily: FONT_DISPLAY,
@@ -250,11 +229,8 @@ function Cashback({
             >
               {cashbackPct}%
             </div>
-
           </div>
-
         </div>
-
 
         <div
           style={{
@@ -266,7 +242,6 @@ function Cashback({
             minWidth: 220
           }}
         >
-
           <label
             style={{
               fontSize: 13,
@@ -275,7 +250,6 @@ function Cashback({
           >
             Validade do cashback (dias após ganho)
           </label>
-
 
           <input
             type="number"
@@ -292,7 +266,6 @@ function Cashback({
             }}
           />
 
-
           <div
             style={{
               fontSize: 11,
@@ -302,11 +275,8 @@ function Cashback({
           >
             Os lembretes de saldo são enviados pela aba WhatsApp, nos dias configurados lá.
           </div>
-
         </div>
-
       </div>
-
 
       <div
         style={{
@@ -316,8 +286,6 @@ function Cashback({
           overflow: "hidden"
         }}
       >
-
-
         <div
           style={{
             display: "grid",
@@ -330,24 +298,12 @@ function Cashback({
             textTransform: "uppercase"
           }}
         >
-
-          <div>
-            Cliente
-          </div>
-
-          <div>
-            Saldo cashback
-          </div>
-
-          <div>
-            Lembrete WhatsApp
-          </div>
-
+          <div>Cliente</div>
+          <div>Saldo cashback</div>
+          <div>Lembrete WhatsApp</div>
         </div>
 
-
         {customers.map((c, i) => (
-
           <div
             key={c.id}
             style={{
@@ -362,8 +318,6 @@ function Cashback({
                   : "none"
             }}
           >
-
-
             <div
               style={{
                 fontWeight: 600
@@ -372,9 +326,7 @@ function Cashback({
               {c.name}
             </div>
 
-
             {editingId === c.id ? (
-
               <div
                 style={{
                   display: "flex",
@@ -382,7 +334,6 @@ function Cashback({
                   alignItems: "center"
                 }}
               >
-
                 <input
                   value={editValue}
                   onChange={(e) =>
@@ -395,11 +346,8 @@ function Cashback({
                   }}
                 />
 
-
                 <button
-                  onClick={() =>
-                    saveEdit(c.id)
-                  }
+                  onClick={() => saveEdit(c.id)}
                   style={{
                     background: accent,
                     border: "none",
@@ -408,18 +356,10 @@ function Cashback({
                     cursor: "pointer"
                   }}
                 >
-
-                  <Check
-                    size={12}
-                    color="#fff"
-                  />
-
+                  <Check size={12} color="#fff" />
                 </button>
-
               </div>
-
             ) : (
-
               <div
                 style={{
                   display: "flex",
@@ -427,7 +367,6 @@ function Cashback({
                   alignItems: "center"
                 }}
               >
-
                 <span
                   style={{
                     fontWeight: 800,
@@ -437,11 +376,8 @@ function Cashback({
                   {money(c.cashback)}
                 </span>
 
-
                 <button
-                  onClick={() =>
-                    startEdit(c)
-                  }
+                  onClick={() => startEdit(c)}
                   style={{
                     background: "none",
                     border: "none",
@@ -449,18 +385,10 @@ function Cashback({
                     padding: 0
                   }}
                 >
-
-                  <Edit2
-                    size={12}
-                    color={subtext}
-                  />
-
+                  <Edit2 size={12} color={subtext} />
                 </button>
-
               </div>
-
             )}
-
 
             <div
               style={{
@@ -470,19 +398,11 @@ function Cashback({
             >
               "Oi {c.name.split(" ")[0]}, você tem {money(c.cashback)} em cashback te esperando! 🎁"
             </div>
-
-
           </div>
-
         ))}
-
       </div>
-
     </div>
-
   );
-
 }
-
 
 export { Cashback };

@@ -325,7 +325,7 @@ export function LoginScreen({
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.message || "E-mail ou senha incorretos.");
+        setError(data.message || data.error || "E-mail ou senha incorretos.");
         return;
       }
 

@@ -1,11 +1,482 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Users, Package, ShoppingCart, BarChart3, Store, MessageCircle, Gift, Printer, Plus, Search, Moon, Sun, Trash2, X, ChevronRight, ChevronLeft, Award, Percent, Eye, EyeOff, Edit2, Check, User, Lock, Menu, Bell, Clipboard, MoreVertical, Tag, Heart, ScanLine, List, History, LayoutGrid, TrendingUp, Share2, Calculator, CreditCard, Truck, Video, Music, Type, Mail, Wallet, Banknote, Save } from "lucide-react";
-import { FONT_BODY, FONT_DISPLAY, SUCCESS, DANGER, CHANNELS, GENDERS, FULFILLMENTS, MONTH_NAMES, MONTH_SHORT, WEEKDAY_LABELS, WEEKDAY_SHORT, seedCustomers, seedProducts, seedSellers, paymentMethods, HOUR_WEIGHTS, DOW_WEIGHTS, HOUR_SLOTS, CHANNEL_WEIGHTS, GENDER_WEIGHTS, FULFILL_WEIGHTS, PRESET_COLORS, seedSales, allSeedSales, seedAdEntries, seedFiados } from "../data/constants";
-import { money, formatDateShort, formatDateBadge, formatDateLong, inPeriod, sameOrBefore, sendWhatsAppMessage, sendSMS, fiadoDate, inputStyle, lbl, ghostBtn, hexAlpha } from "../utils/helpers";
-import { SectionTitle, StatCard, FinanceRow, HBar, WaveChart, Pill, SLabel, PeriodHeader, PeriodModal, SingleDatePicker, MenuGridScreen, LogoMark, VipWelcome } from "../components/common";
-import type { Product, Customer, Seller, Sale, StockLocation, AdEntry, WaScheduleEntry, WelcomeConfig } from "../types";
 
-function Clientes({ customers, setCustomers, sales, card, border, subtext, accent, text }) {   const [query, setQuery] = useState("");   const [showForm, setShowForm] = useState(false);   const [form, setForm] = useState({ name: "", phone: "", cpf: "" });   const [selected, setSelected] = useState(null);   const [editingCashback, setEditingCashback] = useState(null);   const [cashbackInput, setCashbackInput] = useState("");    const filtered = customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));   const addCustomer = () => { if (!form.name || !form.phone) return; setCustomers([...customers, { id: "c" + Date.now(), name: form.name, phone: form.phone, cpf: form.cpf, cashback: 0 }]); setForm({ name: "", phone: "", cpf: "" }); setShowForm(false); };   const historyFor = (custId) => { const custSales = sales.filter((s) => s.customer === custId); const totalSpent = custSales.reduce((s, v) => s + v.total, 0); const avgTicket = custSales.length ? totalSpent / custSales.length : 0; return { custSales, totalSpent, avgTicket }; };   const daysSince = (custId) => { const custSales = sales.filter((s) => s.customer === custId); if (custSales.length === 0) return null; const last = custSales.reduce((max, s) => (new Date(s.date) > max ? new Date(s.date) : max), new Date(0)); return Math.floor((Date.now() - last.getTime()) / 86400000); };   const saveCashback = (id) => { setCustomers(customers.map((c) => (c.id === id ? { ...c, cashback: parseFloat(cashbackInput) || 0 } : c))); setEditingCashback(null); };    const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);   const spendByCustomer = {};   sales.filter((s) => new Date(s.date) >= monthAgo).forEach((s) => { spendByCustomer[s.customer] = (spendByCustomer[s.customer] || 0) + s.total; });   const topCustomerId = Object.entries(spendByCustomer).sort((a, b) => b[1] - a[1])[0]?.[0];    return (     <div>       <SectionTitle title="Clientes" sub="Cadastro e histórico de compras" subtext={subtext} />       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: card, border: `1px solid ${border}`, borderRadius: 8, padding: "8px 12px" }}>           <Search size={15} color={subtext} />           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cliente..." style={{ border: "none", outline: "none", background: "transparent", color: text, fontSize: 13, flex: 1 }} />         </div>         <button onClick={() => setShowForm(!showForm)} style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}><Plus size={15} /> Novo cliente</button>       </div>       {showForm && (         <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 16, marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>           <input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle(border, text)} />           <input placeholder="Telefone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={inputStyle(border, text)} />           <input placeholder="CPF" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} style={inputStyle(border, text)} />           <button onClick={addCustomer} style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Salvar</button>         </div>       )}       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>         {filtered.map((c, i) => {           const { custSales, totalSpent, avgTicket } = historyFor(c.id);           const days = daysSince(c.id);           const isOpen = selected === c.id;           return (             <div key={c.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${border}` : "none" }}>               <div onClick={() => setSelected(isOpen ? null : c.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 14, cursor: "pointer" }}>                 <div>                   <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>                     {c.name}                     {c.id === topCustomerId && <Pill color={accent}>TOP DO MÊS</Pill>}                     {(days === null || days >= 30) && <Pill color={DANGER}>{days === null ? "nunca comprou" : `${days}d sem comprar`}</Pill>}                   </div>                   <div style={{ fontSize: 12, color: subtext }}>{c.phone} · {custSales.length} compra(s) · ticket médio {money(avgTicket)}</div>                 </div>                 <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} color={subtext} />               </div>               {isOpen && (                 <div style={{ padding: "0 14px 14px", fontSize: 13 }}>                   <div style={{ color: subtext, marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>                     <span>CPF: {c.cpf || "não informado"}</span><span>· Cashback:</span>                     {editingCashback === c.id ? (                       <>                         <input value={cashbackInput} onChange={(e) => setCashbackInput(e.target.value)} type="number" style={{ ...inputStyle(border, text), width: 90, flex: "0 0 90px" }} />                         <button onClick={() => saveCashback(c.id)} style={{ background: accent, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}><Check size={12} color="#fff" /></button>                       </>                     ) : (                       <>                         <b style={{ color: accent }}>{money(c.cashback)}</b>                         <button onClick={() => { setEditingCashback(c.id); setCashbackInput(String(c.cashback)); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Edit2 size={12} color={subtext} /></button>                       </>                     )}                   </div>                   {custSales.length === 0 && <div style={{ color: subtext }}>Nenhuma compra registrada.</div>}                   {custSales.map((s) => (<div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: `1px dashed ${border}` }}><span>{new Date(s.date).toLocaleDateString("pt-BR")} — {s.items.map((it) => it.name).join(", ")}</span><span style={{ fontWeight: 700 }}>{money(s.total)}</span></div>))}                   <div style={{ marginTop: 8, fontWeight: 700 }}>Total gasto: {money(totalSpent)}</div>                 </div>               )}             </div>           );         })}       </div>     </div>   ); }
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  Users,
+  Package,
+  ShoppingCart,
+  BarChart3,
+  Store,
+  MessageCircle,
+  Gift,
+  Printer,
+  Plus,
+  Search,
+  Moon,
+  Sun,
+  Trash2,
+  X,
+  ChevronRight,
+  ChevronLeft,
+  Award,
+  Percent,
+  Eye,
+  EyeOff,
+  Edit2,
+  Check,
+  User,
+  Lock,
+  Menu,
+  Bell,
+  Clipboard,
+  MoreVertical,
+  Tag,
+  Heart,
+  ScanLine,
+  List,
+  History,
+  LayoutGrid,
+  TrendingUp,
+  Share2,
+  Calculator,
+  CreditCard,
+  Truck,
+  Video,
+  Music,
+  Type,
+  Mail,
+  Wallet,
+  Banknote,
+  Save
+} from "lucide-react";
+
+import {
+  FONT_BODY,
+  FONT_DISPLAY,
+  SUCCESS,
+  DANGER,
+  CHANNELS,
+  GENDERS,
+  FULFILLMENTS,
+  MONTH_NAMES,
+  MONTH_SHORT,
+  WEEKDAY_LABELS,
+  WEEKDAY_SHORT,
+  seedCustomers,
+  seedProducts,
+  seedSellers,
+  paymentMethods,
+  HOUR_WEIGHTS,
+  DOW_WEIGHTS,
+  HOUR_SLOTS,
+  CHANNEL_WEIGHTS,
+  GENDER_WEIGHTS,
+  FULFILL_WEIGHTS,
+  PRESET_COLORS,
+  seedSales,
+  allSeedSales,
+  seedAdEntries,
+  seedFiados
+} from "../data/constants";
+
+import {
+  money,
+  formatDateShort,
+  formatDateBadge,
+  formatDateLong,
+  inPeriod,
+  sameOrBefore,
+  sendWhatsAppMessage,
+  sendSMS,
+  fiadoDate,
+  inputStyle,
+  lbl,
+  ghostBtn,
+  hexAlpha
+} from "../utils/helpers";
+
+import {
+  SectionTitle,
+  StatCard,
+  FinanceRow,
+  HBar,
+  WaveChart,
+  Pill,
+  SLabel,
+  PeriodHeader,
+  PeriodModal,
+  SingleDatePicker,
+  MenuGridScreen,
+  LogoMark,
+  VipWelcome
+} from "../components/common";
+
+import type {
+  Product,
+  Customer,
+  Seller,
+  Sale,
+  StockLocation,
+  AdEntry,
+  WaScheduleEntry,
+  WelcomeConfig
+} from "../types";
+
+
+function Clientes({
+  customers,
+  setCustomers,
+  sales,
+  card,
+  border,
+  subtext,
+  accent,
+  text
+}) {
+  const [query, setQuery] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: "", phone: "", cpf: "" });
+  const [selected, setSelected] = useState(null);
+  const [editingCashback, setEditingCashback] = useState(null);
+  const [cashbackInput, setCashbackInput] = useState("");
+
+  const filtered = customers.filter((c) =>
+    c.name.toLowerCase().includes(query.toLowerCase())
+  );
+
+  const addCustomer = () => {
+    if (!form.name || !form.phone) return;
+    setCustomers([
+      ...customers,
+      {
+        id: "c" + Date.now(),
+        name: form.name,
+        phone: form.phone,
+        cpf: form.cpf,
+        cashback: 0
+      }
+    ]);
+    setForm({ name: "", phone: "", cpf: "" });
+    setShowForm(false);
+  };
+
+  const historyFor = (custId) => {
+    const custSales = sales.filter((s) => s.customer === custId);
+    const totalSpent = custSales.reduce((s, v) => s + v.total, 0);
+    const avgTicket = custSales.length ? totalSpent / custSales.length : 0;
+    return { custSales, totalSpent, avgTicket };
+  };
+
+  const daysSince = (custId) => {
+    const custSales = sales.filter((s) => s.customer === custId);
+    if (custSales.length === 0) return null;
+    const last = custSales.reduce(
+      (max, s) => (new Date(s.date) > max ? new Date(s.date) : max),
+      new Date(0)
+    );
+    return Math.floor((Date.now() - last.getTime()) / 86400000);
+  };
+
+  const saveCashback = (id) => {
+    setCustomers(
+      customers.map((c) =>
+        c.id === id
+          ? { ...c, cashback: parseFloat(cashbackInput) || 0 }
+          : c
+      )
+    );
+    setEditingCashback(null);
+  };
+
+  const monthAgo = new Date();
+  monthAgo.setDate(monthAgo.getDate() - 30);
+
+  const spendByCustomer = {};
+  sales
+    .filter((s) => new Date(s.date) >= monthAgo)
+    .forEach((s) => {
+      spendByCustomer[s.customer] =
+        (spendByCustomer[s.customer] || 0) + s.total;
+    });
+
+  const topCustomerId = Object.entries(spendByCustomer).sort(
+    (a, b) => b[1] - a[1]
+  )[0]?.[0];
+
+  return (
+    <div>
+      <SectionTitle
+        title="Clientes"
+        sub="Cadastro e histórico de compras"
+        subtext={subtext}
+      />
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: card,
+            border: `1px solid ${border}`,
+            borderRadius: 8,
+            padding: "8px 12px"
+          }}
+        >
+          <Search size={15} color={subtext} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar cliente..."
+            style={{
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              color: text,
+              fontSize: 13,
+              flex: 1
+            }}
+          />
+        </div>
+
+        <button
+          onClick={() => setShowForm(!showForm)}
+          style={{
+            background: accent,
+            color: "#fff",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer"
+          }}
+        >
+          <Plus size={15} /> Novo cliente
+        </button>
+      </div>
+
+      {showForm && (
+        <div
+          style={{
+            background: card,
+            border: `1px solid ${border}`,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16,
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap"
+          }}
+        >
+          <input
+            placeholder="Nome"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            style={inputStyle(border, text)}
+          />
+          <input
+            placeholder="Telefone"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            style={inputStyle(border, text)}
+          />
+          <input
+            placeholder="CPF"
+            value={form.cpf}
+            onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+            style={inputStyle(border, text)}
+          />
+          <button
+            onClick={addCustomer}
+            style={{
+              background: accent,
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 16px",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            Salvar
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          background: card,
+          border: `1px solid ${border}`,
+          borderRadius: 12,
+          overflow: "hidden"
+        }}
+      >
+        {filtered.map((c, i) => {
+          const { custSales, totalSpent, avgTicket } = historyFor(c.id);
+          const days = daysSince(c.id);
+          const isOpen = selected === c.id;
+
+          return (
+            <div
+              key={c.id}
+              style={{
+                borderBottom:
+                  i < filtered.length - 1 ? `1px solid ${border}` : "none"
+              }}
+            >
+              <div
+                onClick={() => setSelected(isOpen ? null : c.id)}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: 14,
+                  cursor: "pointer"
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: 14,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap"
+                    }}
+                  >
+                    {c.name}
+                    {c.id === topCustomerId && (
+                      <Pill color={accent}>TOP DO MÊS</Pill>
+                    )}
+                    {(days === null || days >= 30) && (
+                      <Pill color={DANGER}>
+                        {days === null ? "nunca comprou" : `${days}d sem comprar`}
+                      </Pill>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: subtext }}>
+                    {c.phone} · {custSales.length} compra(s) · ticket médio{" "}
+                    {money(avgTicket)}
+                  </div>
+                </div>
+
+                <ChevronRight
+                  size={16}
+                  style={{
+                    transform: isOpen ? "rotate(90deg)" : "none",
+                    transition: "transform .15s"
+                  }}
+                  color={subtext}
+                />
+              </div>
+
+              {isOpen && (
+                <div style={{ padding: "0 14px 14px", fontSize: 13 }}>
+                  <div
+                    style={{
+                      color: subtext,
+                      marginBottom: 8,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap"
+                    }}
+                  >
+                    <span>CPF: {c.cpf || "não informado"}</span>
+                    <span>· Cashback:</span>
+                    {editingCashback === c.id ? (
+                      <>
+                        <input
+                          value={cashbackInput}
+                          onChange={(e) => setCashbackInput(e.target.value)}
+                          type="number"
+                          style={{
+                            ...inputStyle(border, text),
+                            width: 90,
+                            flex: "0 0 90px"
+                          }}
+                        />
+                        <button
+                          onClick={() => saveCashback(c.id)}
+                          style={{
+                            background: accent,
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          <Check size={12} color="#fff" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <b style={{ color: accent }}>
+                          {money(c.cashback)}
+                        </b>
+                        <button
+                          onClick={() => {
+                            setEditingCashback(c.id);
+                            setCashbackInput(String(c.cashback));
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 0
+                          }}
+                        >
+                          <Edit2 size={12} color={subtext} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {custSales.length === 0 && (
+                    <div style={{ color: subtext }}>
+                      Nenhuma compra registrada.
+                    </div>
+                  )}
+
+                  {custSales.map((s) => (
+                    <div
+                      key={s.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "6px 0",
+                        borderTop: `1px dashed ${border}`
+                      }}
+                    >
+                      <span>
+                        {new Date(s.date).toLocaleDateString("pt-BR")} —{" "}
+                        {s.items.map((it) => it.name).join(", ")}
+                      </span>
+                      <span style={{ fontWeight: 700 }}>
+                        {money(s.total)}
+                      </span>
+                    </div>
+                  ))}
+
+                  <div style={{ marginTop: 8, fontWeight: 700 }}>
+                    Total gasto: {money(totalSpent)}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export { Clientes };

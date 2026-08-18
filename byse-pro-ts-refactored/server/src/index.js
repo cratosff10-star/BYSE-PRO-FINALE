@@ -17,6 +17,8 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,                   // Sua URL de produção (lida do .env)
 ].filter(Boolean);                            // Remove valores indefinidos se FRONTEND_URL não estiver setado
 
+
+app.use(express.json());
 app.use(cors({
   origin: function (origin, callback) {
     // Permite requisições sem 'origin' (como chamadas de ferramentas de teste como Postman ou do próprio servidor)
@@ -99,11 +101,11 @@ app.post('/api/users', async (req, res) => {
 
 // Login de Usuário
 app.post('/api/login', async (req, res) => {
-    const emailClean = email.trim().toLowerCase();
+   
   try {
-    const { emailClean, password } = req.body ?? {};
+    const { email, password } = req.body ?? {};
 
-    if (!emailClean || !password) {
+    if (!email || !password) {
       return res.status(400).json({ message: 'E-mail e senha são obrigatórios.' });
     }
 
@@ -124,11 +126,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     // 🔒 Gerando o token JWT
-    const token = jwt.sign(
-      { userId: user.id, email: user.email }, 
-      JWT_SECRET, 
-      { expiresIn: '7d' }
-    );
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'secret');
 
     return res.json({
       token,

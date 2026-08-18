@@ -24,4 +24,4 @@ async function createUser(name, email, plainPassword) {
 }
 
 // Executa para criar o seu usuário de teste
-createUser('Usuário Teste', 'teste2@gmail.com', 'senha123');
+createUser('Usuário Teste', 'matheusbyseceo@gmail.com', 'CEO@b2026');
