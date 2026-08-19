@@ -197,7 +197,7 @@ function CatTile({ label, abbr, Icon, colors, onClick }) {
   );
 }
 
-function PDV({
+export function PDV({
   device,
   products,
   customers,
@@ -392,3 +392,4 @@ function PDV({
     );
   }
 }
+
