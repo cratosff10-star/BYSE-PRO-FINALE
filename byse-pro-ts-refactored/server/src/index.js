@@ -105,10 +105,14 @@ app.post('/api/users', async (req, res) => {
 
 // Login de Usuário
 app.post('/api/login', async (req, res) => {
+  console.log('--- TENTATIVA DE LOGIN ---');
+  console.log('Corpo da requisição (body):', req.body);
+  console.log('JWT_SECRET configurado?:', !!process.env.JWT_SECRET);
   try {
     const { email, password } = req.body ?? {};
 
     if (!email || !password) {
+        console.log('Erro: E-mail ou senha ausentes no body.');
       return res.status(400).json({ message: 'E-mail e senha são obrigatórios.' });
     }
 
