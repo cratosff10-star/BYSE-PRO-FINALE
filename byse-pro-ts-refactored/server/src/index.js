@@ -10,19 +10,31 @@ const app = express();
 const port = Number(process.env.PORT ?? 3333);
 const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_aqui';
 
-// 1. Configuração do CORS (libera preflight e requisições para qualquer origem)
-app.use(cors({
-  origin: true, // Aceita automaticamente o domínio que fez a requisição (Vercel, localhost, etc.)
+// 1. Configuração principal do CORS
+const corsOptions = {
+  origin: true, // Aceita automaticamente a Vercel, localhost e qualquer origem dinâmica
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-}));
+};
 
-// 2. Responde requisições preflight (OPTIONS) de forma segura sem quebrar o roteador do Express
-app.options('(.*)', cors());
+app.use(cors(corsOptions));
 
-// 3. Middleware para aceitar JSON no corpo das requisições
+// 2. Interceptador global manual de requisições OPTIONS (Garante resposta 200 OK imediata ao navegador)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// 3. Middleware para ler JSON no corpo das requisições
 app.use(express.json());
+
 
 // ==========================================
 // 1. ROTA DE SAÚDE / HEALTHCHECK
@@ -233,4 +245,9 @@ app.post('/api/reminders/run-now', async (_req, res) => {
 app.listen(port, () => {
     console.log(`BYSE PRO reminder bot running on http://localhost:${port}`);
     startReminderScheduler();
+});
+
+// Exemplo de escuta na porta vinculada ao IP 0.0.0.0 (Obrigatório para o Railway)
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Servidor rodando com sucesso na porta ${port}`);
 });
