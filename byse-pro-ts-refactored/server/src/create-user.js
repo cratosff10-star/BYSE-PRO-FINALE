@@ -1,27 +1,45 @@
-import { db } from './db.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
-import { randomUUID } from 'node:crypto';
 
-async function createUser(name, email, plainPassword) {
+// Força o carregamento do .env da pasta raiz "server"
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+// Importação dinâmica do pool após carregar as variáveis
+const { pool } = await import('./db.js');
+
+async function createUser() {
+  const nome = 'Seu Nome';
+  const email = 'seu_email@exemplo.com';
+  const password = 'sua_senha_aqui';
+
   try {
-    // Normaliza o e-mail para evitar problemas de login depois
     const cleanEmail = email.trim().toLowerCase();
 
-    // 1. Gera o ID único e o hash da senha
-    const id = randomUUID();
-    const passwordHash = await bcrypt.hash(plainPassword, 10);
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
+    if (existing.rows.length > 0) {
+      console.log('⚠️ Este e-mail já está cadastrado!');
+      process.exit(0);
+    }
 
-    // 2. Prepara e executa a inserção com a coluna correta (password_hash)
-    const stmt = db.prepare(
-      'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)'
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userId = `usr_${Date.now()}`;
+
+    await pool.query(
+      `INSERT INTO users (id, name, email, password, created_at) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, nome.trim(), cleanEmail, passwordHash, new Date().toISOString()]
     );
-    stmt.run(id, name, cleanEmail, passwordHash);
 
-    console.log(`Usuário criado com sucesso! ID: ${id}`);
-  } catch (err) {
-    console.error('Erro ao criar usuário:', err.message);
+    console.log('✅ Usuário criado com sucesso no PostgreSQL!');
+    console.log(`Email: ${cleanEmail}`);
+  } catch (error) {
+    console.error('❌ Erro ao criar usuário:', error);
+  } finally {
+    await pool.end();
   }
 }
 
-// Executa para criar o seu usuário de teste
-createUser('PG SUPLEMENTOS', 'byse.pgsuplementos@gmail.com', 'PG-sup@26');
+createUser("MATHEUS CEO","matheusbyseceo@gmail.com","CEO@b2026");
