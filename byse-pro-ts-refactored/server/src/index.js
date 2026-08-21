@@ -17,13 +17,23 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean); // Remove valores nulos ou undefined
 
-// 2. Aplicação do Middleware do CORS (Sempre ANTES das rotas)
+// Configuração do CORS flexível e seguro
 app.use(cors({
   origin: function (origin, callback) {
-    // Permite requisições sem 'origin' (ex: Postman, mobile ou chamadas do próprio servidor)
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Permite requisições sem 'origin' (ex: Postman)
+    if (!origin) return callback(null, true);
+
+    // Permite Localhost
+    if (origin.includes('localhost')) return callback(null, true);
+
+    // Permite QUALQUER subdomínio da Vercel (seu-projeto.vercel.app, preview-git-main.vercel.app, etc)
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+
+    // Permite a URL personalizada se estiver configurada nas variáveis do Railway
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
       return callback(null, true);
     }
+
     return callback(new Error('Bloqueado pelo CORS: Origem não permitida.'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
