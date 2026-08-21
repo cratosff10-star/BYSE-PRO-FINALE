@@ -10,40 +10,19 @@ const app = express();
 const port = Number(process.env.PORT ?? 3333);
 const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_aqui';
 
-// 1. Configuração dos domínios permitidos pelo CORS
-const allowedOrigins = [
-  'http://localhost:5173',
-  'https://byse-pro-finale-nowo-seven.vercel.app',
-  process.env.FRONTEND_URL
-].filter(Boolean); // Remove valores nulos ou undefined
-
-// Configuração do CORS flexível e seguro
+// 1. Configuração do CORS (libera preflight e requisições para qualquer origem)
 app.use(cors({
-  origin: function (origin, callback) {
-    // Permite requisições sem 'origin' (ex: Postman)
-    if (!origin) return callback(null, true);
-
-    // Permite Localhost
-    if (origin.includes('localhost')) return callback(null, true);
-
-    // Permite QUALQUER subdomínio da Vercel (seu-projeto.vercel.app, preview-git-main.vercel.app, etc)
-    if (origin.endsWith('.vercel.app')) return callback(null, true);
-
-    // Permite a URL personalizada se estiver configurada nas variáveis do Railway
-    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
-      return callback(null, true);
-    }
-
-    return callback(new Error('Bloqueado pelo CORS: Origem não permitida.'));
-  },
+  origin: true, // Aceita automaticamente o domínio que fez a requisição (Vercel, localhost, etc.)
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
+
+// 2. Responde requisições preflight (OPTIONS) de forma segura sem quebrar o roteador do Express
+app.options('(.*)', cors());
 
 // 3. Middleware para aceitar JSON no corpo das requisições
 app.use(express.json());
-
 
 // ==========================================
 // 1. ROTA DE SAÚDE / HEALTHCHECK
