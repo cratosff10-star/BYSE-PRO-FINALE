@@ -86,31 +86,38 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// Login de Usuário
+// Login de Usuário (com Diagnóstico Detalhado)
 app.post('/api/login', async (req, res) => {
-  console.log('--- TENTATIVA DE LOGIN ---');
-  console.log('JWT_SECRET configurado?:', !!process.env.JWT_SECRET);
+  console.log('--- DIAGNÓSTICO DE LOGIN ---');
   try {
     const { email, password } = req.body ?? {};
 
     if (!email || !password || typeof email !== 'string') {
+      console.log('❌ Body inválido recebido:', req.body);
       return res.status(400).json({ message: 'E-mail e senha são obrigatórios.' });
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    console.log(`🔎 Buscando usuário no banco para o e-mail: "${cleanEmail}"`);
 
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [cleanEmail]);
     const user = result.rows[0];
 
-    if (!user || !user.password) {
+    if (!user) {
+      console.log(`❌ E-mail NÃO ENCONTRADO no PostgreSQL: "${cleanEmail}"`);
       return res.status(401).json({ message: 'E-mail ou senha incorretos.' });
     }
+
+    console.log(`✅ Usuário encontrado (ID: ${user.id}). Testando senha hash...`);
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
+      console.log(`❌ Senha INCORRETA para o usuário: "${cleanEmail}"`);
       return res.status(401).json({ message: 'E-mail ou senha incorretos.' });
     }
+
+    console.log(`🎉 LOGIN AUTORIZADO com sucesso para: "${cleanEmail}"`);
 
     const token = jwt.sign(
       { id: user.id, userId: user.id, email: user.email },
@@ -122,7 +129,7 @@ app.post('/api/login', async (req, res) => {
       user: { id: user.id, name: user.name, email: user.email }
     });
   } catch (error) {
-    console.error('❌ ERRO DETALHADO NO LOGIN:', error);
+    console.error('❌ ERRO NO PROCESSO DE LOGIN:', error);
     return res.status(500).json({ message: 'Erro interno ao processar login.' });
   }
 });
@@ -198,11 +205,20 @@ app.post('/api/purchases', authenticateToken, async (req, res) => {
 // ==========================================
 // 5. LEMBRETES E CONFIGURAÇÕES
 // ==========================================
-app.get('/api/reminders/settings', (_req, res) => res.json(getSettings()));
+app.get('/api/reminders/settings', async (_req, res) => {
+  try {
+    const settings = await getSettings();
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ message: 'Erro ao buscar configurações.' });
+  }
+});
 
 app.put('/api/reminders/settings', async (req, res) => {
   try {
     const { enabled, firstDay, secondDay, thirdDay, hour, minute, template } = req.body ?? {};
+    const currentSettings = await getSettings();
+
     await pool.query(
       `UPDATE reminder_settings 
        SET enabled=$1, first_day=$2, second_day=$3, third_day=$4, hour=$5, minute=$6, template=$7 
@@ -214,10 +230,10 @@ app.put('/api/reminders/settings', async (req, res) => {
         thirdDay ?? 'saturday',
         Number(hour ?? 10),
         Number(minute ?? 0),
-        template ?? getSettings().template
+        template ?? currentSettings?.template
       ]
     );
-    res.json(getSettings());
+    res.json(await getSettings());
   } catch (error) {
     console.error('Erro ao atualizar configurações:', error);
     res.status(500).json({ message: 'Erro ao atualizar configurações.' });
