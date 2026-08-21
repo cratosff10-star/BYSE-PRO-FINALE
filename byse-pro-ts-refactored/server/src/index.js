@@ -10,9 +10,9 @@ const app = express();
 const port = Number(process.env.PORT ?? 3333);
 const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_aqui';
 
-// 1. Configuração principal do CORS
+// 1. Configuração do CORS (Libera preflight e aceita Vercel, localhost, etc.)
 const corsOptions = {
-  origin: true, // Aceita automaticamente a Vercel, localhost e qualquer origem dinâmica
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
@@ -20,7 +20,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// 2. Interceptador global manual de requisições OPTIONS (Garante resposta 200 OK imediata ao navegador)
+// 2. Interceptador global para requisições OPTIONS (Preflight imediato)
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
@@ -34,7 +34,6 @@ app.use((req, res, next) => {
 
 // 3. Middleware para ler JSON no corpo das requisições
 app.use(express.json());
-
 
 // ==========================================
 // 1. ROTA DE SAÚDE / HEALTHCHECK
@@ -58,7 +57,8 @@ export function authenticateToken(req, res, next) {
     if (err) {
       return res.status(403).json({ message: 'Token inválido ou expirado.' });
     }
-    req.userId = decoded.userId; // Salva o ID do usuário verificado na requisição
+    // Suporta tanto id quanto userId do payload do JWT
+    req.userId = decoded.userId || decoded.id; 
     next();
   });
 }
@@ -78,17 +78,15 @@ app.post('/api/users', async (req, res) => {
 
         const cleanEmail = email.trim().toLowerCase();
 
-        // 1. Verificar se o e-mail já existe
+        // Verificar se e-mail já existe
         const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
         if (existingUser) {
             return res.status(400).json({ message: 'Este e-mail já está cadastrado no sistema!' });
         }
 
-        // 2. Criptografar a senha
         const passwordHash = await bcrypt.hash(password, 10);
         const userId = `usr_${Date.now()}`;
 
-        // 3. Inserir no banco de dados SQLite (usando a hash da senha)
         db.prepare(`
             INSERT INTO users (id, name, email, password, created_at)
             VALUES (?, ?, ?, ?, ?)
@@ -107,7 +105,6 @@ app.post('/api/users', async (req, res) => {
 
 // Login de Usuário
 app.post('/api/login', async (req, res) => {
-   
   try {
     const { email, password } = req.body ?? {};
 
@@ -124,15 +121,18 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ message: 'E-mail ou senha incorretos.' });
     }
 
-    // Compara a senha informada com a hash salva no banco
+    // Compara a senha
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       return res.status(401).json({ message: 'E-mail ou senha incorretos.' });
     }
 
-    // 🔒 Gerando o token JWT
-    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'secret');
+    // 🔒 Gerando o token JWT (Passando id e userId para garantir compatibilidade)
+    const token = jwt.sign(
+      { id: user.id, userId: user.id, email: user.email }, 
+      JWT_SECRET
+    );
 
     return res.json({
       token,
@@ -145,7 +145,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ==========================================
-// 4. GESTÃO DE CLIENTES & COMPRAS (PROTEGIDAS POR TOKEN)
+// 4. GESTÃO DE CLIENTES & COMPRAS
 // ==========================================
 
 // Buscar clientes do usuário logado
@@ -159,7 +159,7 @@ app.get('/api/customers', authenticateToken, (req, res) => {
     }
 });
 
-// Criar / Atualizar Cliente (Vinculado ao usuário logado)
+// Criar / Atualizar Cliente
 app.post('/api/customers', authenticateToken, (req, res) => {
     const { id, name, phone, whatsappOptIn = false, remindersEnabled = true } = req.body ?? {};
     if (!id || !name || !phone) {
@@ -186,7 +186,6 @@ app.post('/api/purchases', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'id, customerId e items são obrigatórios.' });
     }
 
-    // 🔒 Verifica se o cliente pertence ao usuário logado antes de salvar
     const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND user_id = ?').get(customerId, req.userId);
     if (!customer) {
         return res.status(403).json({ error: 'Cliente não encontrado ou não pertence a este usuário.' });
@@ -199,7 +198,6 @@ app.post('/api/purchases', authenticateToken, (req, res) => {
 
     res.json({ ok: true });
 });
-
 
 // ==========================================
 // 5. LEMBRETES E CASHBACK (CONFIGURAÇÕES)
@@ -240,14 +238,9 @@ app.post('/api/reminders/run-now', async (_req, res) => {
 });
 
 // ==========================================
-// 6. INICIALIZAÇÃO DO SERVIDOR E SCHEDULER
+// 6. INICIALIZAÇÃO ÚNICA DO SERVIDOR
 // ==========================================
-app.listen(port, () => {
-    console.log(`BYSE PRO reminder bot running on http://localhost:${port}`);
-    startReminderScheduler();
-});
-
-// Exemplo de escuta na porta vinculada ao IP 0.0.0.0 (Obrigatório para o Railway)
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Servidor rodando com sucesso na porta ${port}`);
+  console.log(`🚀 Servidor BYSE PRO rodando com sucesso na porta ${port}`);
+  startReminderScheduler();
 });
