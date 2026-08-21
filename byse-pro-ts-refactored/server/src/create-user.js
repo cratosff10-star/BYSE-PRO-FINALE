@@ -11,9 +11,9 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const { pool } = await import('./db.js');
 
 async function createUser() {
-  const nome = 'Seu Nome';
-  const email = 'seu_email@exemplo.com';
-  const password = 'sua_senha_aqui';
+  const nome = 'PG-BYSE';
+  const email = 'byse-pgsuplementos@gmail.com';
+  const password = 'PG-sup@2026';
 
   try {
     const cleanEmail = email.trim().toLowerCase();
