@@ -10,25 +10,30 @@ const app = express();
 const port = Number(process.env.PORT ?? 3333);
 const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_aqui';
 
-// Configuração do CORS e JSON
-// Define quais domínios podem acessar a API
+// 1. Configuração dos domínios permitidos pelo CORS
 const allowedOrigins = [
-  'http://localhost:5173',                   // Seu ambiente de desenvolvimento local
-  process.env.FRONTEND_URL,                   // Sua URL de produção (lida do .env)
-].filter(Boolean);                            // Remove valores indefinidos se FRONTEND_URL não estiver setado
+  'http://localhost:5173',
+  'https://byse-pro-finale-nowo-seven.vercel.app',
+  process.env.FRONTEND_URL
+].filter(Boolean); // Remove valores nulos ou undefined
 
-
-app.use(express.json());
+// 2. Aplicação do Middleware do CORS (Sempre ANTES das rotas)
 app.use(cors({
   origin: function (origin, callback) {
-    // Permite requisições sem 'origin' (como chamadas de ferramentas de teste como Postman ou do próprio servidor)
+    // Permite requisições sem 'origin' (ex: Postman, mobile ou chamadas do próprio servidor)
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Bloqueado pelo CORS: Origem não permitida.'));
   },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+// 3. Middleware para aceitar JSON no corpo das requisições
+app.use(express.json());
+
 
 // ==========================================
 // 1. ROTA DE SAÚDE / HEALTHCHECK
