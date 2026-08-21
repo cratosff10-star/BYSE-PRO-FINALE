@@ -211,6 +211,6 @@ app.post('/api/purchases', authenticateToken, async (req, res) => {
 // ==========================================
 app.listen(port, '0.0.0.0', async () => {
   await initDb();
-  console.log(`🚀 Servidor PostgreSQL rodando com sucesso na porta ${port}`);[cite, 6]
+  console.log(`🚀 Servidor PostgreSQL rodando com sucesso na porta ${port}`);
   startReminderScheduler();
 });
