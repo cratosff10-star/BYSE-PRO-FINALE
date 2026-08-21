@@ -1,11 +1,13 @@
 // @ts-nocheck
 import React, { useEffect, useState } from "react";
 import { Users, Package, ShoppingCart, BarChart3, Store, MessageCircle, Gift, Printer, Plus, Search, Moon, Sun, Trash2, X, ChevronRight, ChevronLeft, Award, Percent, Eye, EyeOff, Edit2, Check, User, Lock, Menu, Bell, Clipboard, MoreVertical, Tag, Heart, ScanLine, List, History, LayoutGrid, TrendingUp, Share2, Calculator, CreditCard, Truck, Video, Music, Type, Mail, Wallet, Banknote, Save, LogOut } from "lucide-react";
-import { FONT_BODY, FONT_DISPLAY, SUCCESS, DANGER, GLOBAL_CSS, seedProducts, seedCustomers, seedSellers, CHANNELS, GENDERS, FULFILLMENTS, allSeedSales, seedFiados, seedAdEntries, PRESET_COLORS } from "../data/constants";
+import { FONT_BODY, FONT_DISPLAY, SUCCESS, DANGER, GLOBAL_CSS, PRESET_COLORS } from "../data/constants";
 import { money, genNoiseSales, genAdEntries, inPeriod } from "../utils/helpers";
 import { LoginScreen, VipWelcome, MenuGridScreen, LogoMark, SLabel } from "../components/common";
 import { Dashboard } from "../features/dashboard"; import { Clientes } from "../features/clientes"; import { Estoque } from "../features/estoque"; import { PDV } from "../features/pdv"; import { Vendedores } from "../features/vendedores"; import { Catalogo } from "../features/catalogo"; import { Cashback } from "../features/cashback"; import { WhatsApp } from "../features/whatsapp"; import { TrafegoPago, CanaisDeVenda } from "../features/marketing"; import { DRE, Planos } from "../features/finance"; import { Fiados } from "../features/fiados";
 import type { Product, Customer, Seller, Sale, StockLocation, AdEntry, WaScheduleEntry, WelcomeConfig } from "../types";
+
+const API_URL = "http://localhost:3333/api";
 
 function SupplementSystem() {   
     const [user, setUser] = useState<any>(null);
@@ -15,63 +17,52 @@ function SupplementSystem() {
     const [device, setDevice] = useState("mobile");   
     const [tab, setTab] = useState("dashboard");    
 
-    // 🔄 Estados inicializados verificando o localStorage (começam do zero se não houver dados salvos)
-    const [products, setProducts] = useState(() => {
-        const saved = localStorage.getItem("byse_products");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [customers, setCustomers] = useState(() => {
-        const saved = localStorage.getItem("byse_customers");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [sellers, setSellers] = useState(() => {
-        const saved = localStorage.getItem("byse_sellers");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [sales, setSales] = useState(() => {
-        const saved = localStorage.getItem("byse_sales");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [fiados, setFiados] = useState(() => {
-        const saved = localStorage.getItem("byse_fiados");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [adEntries, setAdEntries] = useState(() => {
-        const saved = localStorage.getItem("byse_adEntries");
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [stockLocations, setStockLocations] = useState(() => {
-        const saved = localStorage.getItem("byse_stockLocations");
-        return saved ? JSON.parse(saved) : [{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }];
-    });
+    const [products, setProducts] = useState([]);
+    const [customers, setCustomers] = useState([]);
+    const [sellers, setSellers] = useState([]);
+    const [sales, setSales] = useState([]);
+    const [fiados, setFiados] = useState([]);
+    const [adEntries, setAdEntries] = useState([]);
+    const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);
 
     const [cashbackPct, setCashbackPct] = useState(3);   
     const [cashbackValidityDays, setCashbackValidityDays] = useState(90);   
     const [waSchedule, setWaSchedule] = useState([     { id: 1, label: "Lembrete de saldo cashback", day: "Toda sexta-feira", enabled: true, text: "Oi {nome}, você tem {saldo} em cashback esperando! 🎁" },     { id: 2, label: "Promoção do mês", day: "Dia 5 de cada mês", enabled: true, text: "Oi {nome}! Temos novidades e promoções especiais esse mês na loja. 💪" },     { id: 3, label: "Cliente sumido (30 dias sem comprar)", day: "Dia 15 de cada mês", enabled: false, text: "Sentimos sua falta, {nome}! Faz tempo que você não aparece por aqui." },   ]);    
 
-    // 💾 Efeitos para salvar automaticamente no localStorage sempre que houver alterações
-    useEffect(() => { localStorage.setItem("byse_products", JSON.stringify(products)); }, [products]);
-    useEffect(() => { localStorage.setItem("byse_customers", JSON.stringify(customers)); }, [customers]);
-    useEffect(() => { localStorage.setItem("byse_sellers", JSON.stringify(sellers)); }, [sellers]);
-    useEffect(() => { localStorage.setItem("byse_sales", JSON.stringify(sales)); }, [sales]);
-    useEffect(() => { localStorage.setItem("byse_fiados", JSON.stringify(fiados)); }, [fiados]);
-    useEffect(() => { localStorage.setItem("byse_adEntries", JSON.stringify(adEntries)); }, [adEntries]);
-    useEffect(() => { localStorage.setItem("byse_stockLocations", JSON.stringify(stockLocations)); }, [stockLocations]);
+    const getAuthHeaders = () => {
+        const token = localStorage.getItem("byse_token");
+        return {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        };
+    };
 
-    // 🔍 Efeito para restaurar a sessão do localStorage ao carregar a página[cite: 15]
+    // 🔍 Buscar todos os dados salvos do usuário no banco ao carregar a página
+    const fetchUserData = () => {
+        const headers = getAuthHeaders();
+
+        // Buscar Clientes
+        fetch(`${API_URL}/customers`, { headers })
+            .then(res => res.json())
+            .then(data => { if (Array.isArray(data)) setCustomers(data); })
+            .catch(err => console.error("Erro ao buscar clientes:", err));
+
+        // Buscar Compras/Vendas
+        fetch(`${API_URL}/purchases`, { headers })
+            .then(res => res.json())
+            .then(data => { if (Array.isArray(data)) setSales(data); })
+            .catch(err => console.error("Erro ao buscar compras:", err));
+    };
+
     useEffect(() => {
         const savedToken = localStorage.getItem("byse_token");
         const savedUser = localStorage.getItem("byse_user");
 
         if (savedToken && savedUser) {
             try {
-                setUser(JSON.parse(savedUser));
+                const parsedUser = JSON.parse(savedUser);
+                setUser(parsedUser);
+                fetchUserData();
             } catch (error) {
                 console.error("Erro ao carregar sessão salva:", error);
                 localStorage.removeItem("byse_token");
@@ -81,11 +72,57 @@ function SupplementSystem() {
         setLoading(false);
     }, []);
 
-    // 🚪 Função para encerrar a sessão (Logout)[cite: 15]
+    const handleLogin = (userData, token) => {
+        setUser(userData);
+        fetchUserData();
+    };
+
     const handleLogout = () => {
         localStorage.removeItem("byse_token");
         localStorage.removeItem("byse_user");
         setUser(null);
+        setCustomers([]);
+        setSales([]);
+        setProducts([]);
+    };
+
+    // Função centralizada para salvar cliente no banco quando atualizado na tela
+    const handleUpdateCustomers = (newCustomers) => {
+        setCustomers(newCustomers);
+        // Se for uma função ou array, salvamos o último alterado na API
+        const latestCustomer = Array.isArray(newCustomers) ? newCustomers[newCustomers.length - 1] : null;
+        if (latestCustomer) {
+            fetch(`${API_URL}/customers`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    id: latestCustomer.id || `cli_${Date.now()}`,
+                    name: latestCustomer.name,
+                    phone: latestCustomer.phone,
+                    whatsappOptIn: latestCustomer.whatsappOptIn || false,
+                    remindersEnabled: latestCustomer.remindersEnabled ?? true
+                })
+            }).catch(err => console.error("Erro ao salvar cliente no banco:", err));
+        }
+    };
+
+    // Função centralizada para salvar venda/compra no banco quando realizada no PDV
+    const handleUpdateSales = (newSales) => {
+        setSales(newSales);
+        const latestSale = Array.isArray(newSales) ? newSales[newSales.length - 1] : null;
+        if (latestSale) {
+            fetch(`${API_URL}/purchases`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    id: latestSale.id || `pur_${Date.now()}`,
+                    customerId: latestSale.customerId || latestSale.customer_id,
+                    total: latestSale.total,
+                    items: latestSale.items || [],
+                    purchasedAt: latestSale.purchasedAt || new Date().toISOString()
+                })
+            }).catch(err => console.error("Erro ao salvar compra no banco:", err));
+        }
     };
 
     const bg = dark ? "#0C0C0C" : "#F5F3EE";   
@@ -104,7 +141,11 @@ function SupplementSystem() {
     }
 
     if (!user) {
-        return <LoginScreen accent={accent} onLogin={(userData) => setUser(userData)} />;
+        return <LoginScreen accent={accent} onLogin={(userData, token) => {
+            if (token) localStorage.setItem("byse_token", token);
+            localStorage.setItem("byse_user", JSON.stringify(userData));
+            handleLogin(userData, token);
+        }} />;
     }
 
     const nav = [     { id: "dashboard", label: "Painel", icon: BarChart3 },     { id: "clientes", label: "Clientes", icon: Users },     { id: "estoque", label: "Estoque", icon: Package },     { id: "pdv", label: "PDV", icon: ShoppingCart },     { id: "vendedores", label: "Vendedores", icon: Award },     { id: "catalogo", label: "Catálogo", icon: Store },     { id: "cashback", label: "Cashback", icon: Gift },     { id: "fiados", label: "Fiados", icon: Wallet },     { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },     { id: "trafego", label: "Tráfego Pago", icon: TrendingUp },     { id: "canais", label: "Canais de Venda", icon: Share2 },     { id: "dre", label: "DRE", icon: Calculator },     { id: "planos", label: "Planos", icon: Percent },   ];   
@@ -114,12 +155,12 @@ function SupplementSystem() {
 
     const renderScreen = () => {     
         if (tab === "dashboard") return <Dashboard {...{ sales, products, customers, sellers, card, border, subtext, accent, text }} />;     
-        if (tab === "clientes") return <Clientes {...{ customers, setCustomers, sales, card, border, subtext, accent, text }} />;     
+        if (tab === "clientes") return <Clientes customers={customers} setCustomers={handleUpdateCustomers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "estoque") return <Estoque {...{ products, setProducts, stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
-        if (tab === "pdv") return <PDV {...{ device, products, customers, setCustomers, sellers, sales, setSales, fiados, setFiados, cashbackPct, card, border, subtext, accent, text, dark }} />;     
+        if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} {...{ fiados, setFiados, cashbackPct, card, border, subtext, accent, text, dark }} />;     
         if (tab === "vendedores") return <Vendedores {...{ sellers, setSellers, sales, card, border, subtext, accent, text }} />;     
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
-        if (tab === "cashback") return <Cashback {...{ customers, setCustomers, cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     
+        if (tab === "cashback") return <Cashback customers={customers} setCustomers={handleUpdateCustomers} {...{ cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "fiados") return <Fiados {...{ fiados, setFiados, customers, card, border, subtext, accent, text }} />;     
         if (tab === "whatsapp") return <WhatsApp {...{ waSchedule, setWaSchedule, cashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "trafego") return <TrafegoPago {...{ adEntries, setAdEntries, sales, card, border, subtext, accent, text }} />;     

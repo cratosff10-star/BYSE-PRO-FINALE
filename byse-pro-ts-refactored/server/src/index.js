@@ -52,7 +52,6 @@ export function authenticateToken(req, res, next) {
 // 3. AUTENTICAÇÃO E USUÁRIOS
 // ==========================================
 
-// Criar / Cadastrar Novo Usuário
 app.post('/api/users', async (req, res) => {
   try {
     const { nome, email, password } = req.body ?? {};
@@ -86,38 +85,26 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// Login de Usuário (com Diagnóstico Detalhado)
 app.post('/api/login', async (req, res) => {
-  console.log('--- DIAGNÓSTICO DE LOGIN ---');
   try {
     const { email, password } = req.body ?? {};
 
     if (!email || !password || typeof email !== 'string') {
-      console.log('❌ Body inválido recebido:', req.body);
       return res.status(400).json({ message: 'E-mail e senha são obrigatórios.' });
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    console.log(`🔎 Buscando usuário no banco para o e-mail: "${cleanEmail}"`);
-
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [cleanEmail]);
     const user = result.rows[0];
 
     if (!user) {
-      console.log(`❌ E-mail NÃO ENCONTRADO no PostgreSQL: "${cleanEmail}"`);
       return res.status(401).json({ message: 'E-mail ou senha incorretos.' });
     }
-
-    console.log(`✅ Usuário encontrado (ID: ${user.id}). Testando senha hash...`);
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
-      console.log(`❌ Senha INCORRETA para o usuário: "${cleanEmail}"`);
       return res.status(401).json({ message: 'E-mail ou senha incorretos.' });
     }
-
-    console.log(`🎉 LOGIN AUTORIZADO com sucesso para: "${cleanEmail}"`);
 
     const token = jwt.sign(
       { id: user.id, userId: user.id, email: user.email },
@@ -129,18 +116,19 @@ app.post('/api/login', async (req, res) => {
       user: { id: user.id, name: user.name, email: user.email }
     });
   } catch (error) {
-    console.error('❌ ERRO NO PROCESSO DE LOGIN:', error);
+    console.error('ERRO NO PROCESSO DE LOGIN:', error);
     return res.status(500).json({ message: 'Erro interno ao processar login.' });
   }
 });
 
 // ==========================================
-// 4. GESTÃO DE CLIENTES & COMPRAS
+// 4. GESTÃO DE DADOS ISOLADOS POR USUÁRIO (GET / POST)
 // ==========================================
 
+// Clientes (Vinculados estritamente ao user_id logado)
 app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
-    const customers = await pool.query('SELECT * FROM customers WHERE user_id = $1', [req.userId]);
+    const customers = await pool.query('SELECT * FROM customers WHERE user_id = $1', [req.userId]);[cite, 6]
     res.json(customers.rows);
   } catch (error) {
     console.error('Erro ao buscar clientes:', error);
@@ -158,7 +146,7 @@ app.post('/api/customers', authenticateToken, async (req, res) => {
     await pool.query(
       `INSERT INTO customers (id, user_id, name, phone, whatsapp_opt_in, reminders_enabled)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          phone = EXCLUDED.phone,
          whatsapp_opt_in = EXCLUDED.whatsapp_opt_in,
@@ -173,6 +161,21 @@ app.post('/api/customers', authenticateToken, async (req, res) => {
   }
 });
 
+// Compras / Vendas (Vinculadas ao cliente do respectivo usuário)
+app.get('/api/purchases', authenticateToken, async (req, res) => {
+  try {
+    const purchases = await pool.query(`
+      SELECT p.* FROM purchases p 
+      JOIN customers c ON p.customer_id = c.id 
+      WHERE c.user_id = $1
+    `, [req.userId]);[cite, 6]
+    res.json(purchases.rows);
+  } catch (error) {
+    console.error('Erro ao buscar compras:', error);
+    res.status(500).json({ message: 'Erro ao buscar compras.' });
+  }
+});
+
 app.post('/api/purchases', authenticateToken, async (req, res) => {
   try {
     const { id, customerId, total, items, purchasedAt } = req.body ?? {};
@@ -180,7 +183,8 @@ app.post('/api/purchases', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'id, customerId e items são obrigatórios.' });
     }
 
-    const customer = await pool.query('SELECT id FROM customers WHERE id = $1 AND user_id = $2', [customerId, req.userId]);
+    // Valida se o cliente pertence de fato ao usuário autenticado
+    const customer = await pool.query('SELECT id FROM customers WHERE id = $1 AND user_id = $2', [customerId, req.userId]);[cite, 6]
     if (customer.rows.length === 0) {
       return res.status(403).json({ error: 'Cliente não encontrado ou não pertence a este usuário.' });
     }
@@ -188,7 +192,7 @@ app.post('/api/purchases', authenticateToken, async (req, res) => {
     await pool.query(
       `INSERT INTO purchases (id, customer_id, total, items_json, purchased_at)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT(id) DO UPDATE SET
+       ON CONFLICT (id) DO UPDATE SET
          total = EXCLUDED.total,
          items_json = EXCLUDED.items_json,
          purchased_at = EXCLUDED.purchased_at`,
@@ -203,67 +207,10 @@ app.post('/api/purchases', authenticateToken, async (req, res) => {
 });
 
 // ==========================================
-// 5. LEMBRETES E CONFIGURAÇÕES
-// ==========================================
-app.get('/api/reminders/settings', async (_req, res) => {
-  try {
-    const settings = await getSettings();
-    res.json(settings);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro ao buscar configurações.' });
-  }
-});
-
-app.put('/api/reminders/settings', async (req, res) => {
-  try {
-    const { enabled, firstDay, secondDay, thirdDay, hour, minute, template } = req.body ?? {};
-    const currentSettings = await getSettings();
-
-    await pool.query(
-      `UPDATE reminder_settings 
-       SET enabled=$1, first_day=$2, second_day=$3, third_day=$4, hour=$5, minute=$6, template=$7 
-       WHERE id=1`,
-      [
-        enabled ? 1 : 0,
-        firstDay ?? 'tuesday',
-        secondDay ?? 'thursday',
-        thirdDay ?? 'saturday',
-        Number(hour ?? 10),
-        Number(minute ?? 0),
-        template ?? currentSettings?.template
-      ]
-    );
-    res.json(await getSettings());
-  } catch (error) {
-    console.error('Erro ao atualizar configurações:', error);
-    res.status(500).json({ message: 'Erro ao atualizar configurações.' });
-  }
-});
-
-app.get('/api/reminders/stats', async (_req, res) => {
-  try {
-    const stats = await pool.query(`
-      SELECT
-        COUNT(*) as total,
-        SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) as sent,
-        SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed
-      FROM reminder_logs
-    `);
-    res.json(stats.rows[0]);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro ao obter estatísticas.' });
-  }
-});
-
-app.post('/api/reminders/run-now', async (_req, res) => {
-  res.json(await runReminderBatch());
-});
-
-// ==========================================
-// 6. INICIALIZAÇÃO DO SERVIDOR
+// 5. INICIALIZAÇÃO DO SERVIDOR
 // ==========================================
 app.listen(port, '0.0.0.0', async () => {
-  await initDb();
-  console.log(`🚀 Servidor BYSE PRO rodando com sucesso na porta ${port}`);
+  await initDb();[cite, 6]
+  console.log(`🚀 Servidor PostgreSQL rodando com sucesso na porta ${port}`);[cite, 6]
   startReminderScheduler();
 });
