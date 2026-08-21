@@ -1,128 +1,29 @@
 // @ts-nocheck
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useState } from "react";
 
 import {
-  Users,
-  Package,
-  ShoppingCart,
-  BarChart3,
-  Store,
-  MessageCircle,
-  Gift,
-  Printer,
   Plus,
   Search,
-  Moon,
-  Sun,
   Trash2,
-  X,
-  ChevronRight,
-  ChevronLeft,
-  Award,
-  Percent,
-  Eye,
-  EyeOff,
-  Edit2,
   Check,
-  User,
-  Lock,
-  Menu,
-  Bell,
-  Clipboard,
-  MoreVertical,
-  Tag,
-  Heart,
-  ScanLine,
-  List,
-  History,
-  LayoutGrid,
-  TrendingUp,
-  Share2,
-  Calculator,
-  CreditCard,
-  Truck,
-  Video,
-  Music,
-  Type,
-  Mail,
-  Wallet,
-  Banknote,
-  Save
+  ChevronRight,
+  Edit2,
 } from "lucide-react";
 
 import {
-  FONT_BODY,
-  FONT_DISPLAY,
-  SUCCESS,
   DANGER,
-  CHANNELS,
-  GENDERS,
-  FULFILLMENTS,
-  MONTH_NAMES,
-  MONTH_SHORT,
-  WEEKDAY_LABELS,
-  WEEKDAY_SHORT,
-  seedCustomers,
-  seedProducts,
-  seedSellers,
-  paymentMethods,
-  HOUR_WEIGHTS,
-  DOW_WEIGHTS,
-  HOUR_SLOTS,
-  CHANNEL_WEIGHTS,
-  GENDER_WEIGHTS,
-  FULFILL_WEIGHTS,
-  PRESET_COLORS,
-  seedSales,
-  allSeedSales,
-  seedAdEntries,
-  seedFiados
 } from "../data/constants";
 
 import {
   money,
-  formatDateShort,
-  formatDateBadge,
-  formatDateLong,
-  inPeriod,
-  sameOrBefore,
-  sendWhatsAppMessage,
-  sendSMS,
-  fiadoDate,
   inputStyle,
-  lbl,
-  ghostBtn,
-  hexAlpha
 } from "../utils/helpers";
 
 import {
   SectionTitle,
-  StatCard,
-  FinanceRow,
-  HBar,
-  WaveChart,
   Pill,
-  SLabel,
-  PeriodHeader,
-  PeriodModal,
-  SingleDatePicker,
-  MenuGridScreen,
-  LogoMark,
-  VipWelcome
 } from "../components/common";
-
-import type {
-  Product,
-  Customer,
-  Seller,
-  Sale,
-  StockLocation,
-  AdEntry,
-  WaScheduleEntry,
-  WelcomeConfig
-} from "../types";
-
 
 function Clientes({
   customers,
@@ -159,6 +60,19 @@ function Clientes({
     ]);
     setForm({ name: "", phone: "", cpf: "" });
     setShowForm(false);
+  };
+
+  const deleteCustomer = (id, e) => {
+    e.stopPropagation();
+    if (confirm("Tem certeza que deseja excluir este cliente?")) {
+      setCustomers(customers.filter(c => c.id !== id));
+    }
+  };
+
+  const clearAllCustomers = () => {
+    if (confirm("Tem certeza que deseja excluir TODOS os clientes? Esta ação não pode ser desfeita.")) {
+      setCustomers([]);
+    }
   };
 
   const historyFor = (custId) => {
@@ -213,262 +127,82 @@ function Clientes({
       />
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: card,
-            border: `1px solid ${border}`,
-            borderRadius: 8,
-            padding: "8px 12px"
-          }}
-        >
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: card, border: `1px solid ${border}`, borderRadius: 8, padding: "8px 12px" }}>
           <Search size={15} color={subtext} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar cliente..."
-            style={{
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              color: text,
-              fontSize: 13,
-              flex: 1
-            }}
-          />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cliente..." style={{ border: "none", outline: "none", background: "transparent", color: text, fontSize: 13, flex: 1 }} />
         </div>
 
-        <button
-          onClick={() => setShowForm(!showForm)}
-          style={{
-            background: accent,
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            padding: "8px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer"
-          }}
-        >
+        <button onClick={() => setShowForm(!showForm)} style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           <Plus size={15} /> Novo cliente
         </button>
+
+        {customers.length > 0 && (
+          <button onClick={clearAllCustomers} style={{ background: DANGER, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <Trash2 size={15} /> Limpar tudo
+          </button>
+        )}
       </div>
 
       {showForm && (
-        <div
-          style={{
-            background: card,
-            border: `1px solid ${border}`,
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 16,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap"
-          }}
-        >
-          <input
-            placeholder="Nome"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            style={inputStyle(border, text)}
-          />
-          <input
-            placeholder="Telefone"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            style={inputStyle(border, text)}
-          />
-          <input
-            placeholder="CPF"
-            value={form.cpf}
-            onChange={(e) => setForm({ ...form, cpf: e.target.value })}
-            style={inputStyle(border, text)}
-          />
-          <button
-            onClick={addCustomer}
-            style={{
-              background: accent,
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 16px",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer"
-            }}
-          >
-            Salvar
-          </button>
+        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 16, marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle(border, text)} />
+          <input placeholder="Telefone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={inputStyle(border, text)} />
+          <input placeholder="CPF" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} style={inputStyle(border, text)} />
+          <button onClick={addCustomer} style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Salvar</button>
         </div>
       )}
 
-      <div
-        style={{
-          background: card,
-          border: `1px solid ${border}`,
-          borderRadius: 12,
-          overflow: "hidden"
-        }}
-      >
+      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>
         {filtered.map((c, i) => {
           const { custSales, totalSpent, avgTicket } = historyFor(c.id);
           const days = daysSince(c.id);
           const isOpen = selected === c.id;
 
           return (
-            <div
-              key={c.id}
-              style={{
-                borderBottom:
-                  i < filtered.length - 1 ? `1px solid ${border}` : "none"
-              }}
-            >
-              <div
-                onClick={() => setSelected(isOpen ? null : c.id)}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: 14,
-                  cursor: "pointer"
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: 14,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap"
-                    }}
-                  >
+            <div key={c.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${border}` : "none" }}>
+              <div onClick={() => setSelected(isOpen ? null : c.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 14, cursor: "pointer" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     {c.name}
-                    {c.id === topCustomerId && (
-                      <Pill color={accent}>TOP DO MÊS</Pill>
-                    )}
-                    {(days === null || days >= 30) && (
-                      <Pill color={DANGER}>
-                        {days === null ? "nunca comprou" : `${days}d sem comprar`}
-                      </Pill>
-                    )}
+                    {c.id === topCustomerId && <Pill color={accent}>TOP DO MÊS</Pill>}
+                    {(days === null || days >= 30) && <Pill color={DANGER}>{days === null ? "nunca comprou" : `${days}d sem comprar`}</Pill>}
                   </div>
-                  <div style={{ fontSize: 12, color: subtext }}>
-                    {c.phone} · {custSales.length} compra(s) · ticket médio{" "}
-                    {money(avgTicket)}
-                  </div>
+                  <div style={{ fontSize: 12, color: subtext }}>{c.phone} · {custSales.length} compra(s) · ticket médio {money(avgTicket)}</div>
                 </div>
 
-                <ChevronRight
-                  size={16}
-                  style={{
-                    transform: isOpen ? "rotate(90deg)" : "none",
-                    transition: "transform .15s"
-                  }}
-                  color={subtext}
-                />
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <button onClick={(e) => deleteCustomer(c.id, e)} style={{ background: "transparent", border: "none", cursor: "pointer", color: DANGER }}>
+                    <Trash2 size={16} />
+                  </button>
+                  <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} color={subtext} />
+                </div>
               </div>
 
               {isOpen && (
                 <div style={{ padding: "0 14px 14px", fontSize: 13 }}>
-                  <div
-                    style={{
-                      color: subtext,
-                      marginBottom: 8,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap"
-                    }}
-                  >
+                  <div style={{ color: subtext, marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span>CPF: {c.cpf || "não informado"}</span>
                     <span>· Cashback:</span>
                     {editingCashback === c.id ? (
                       <>
-                        <input
-                          value={cashbackInput}
-                          onChange={(e) => setCashbackInput(e.target.value)}
-                          type="number"
-                          style={{
-                            ...inputStyle(border, text),
-                            width: 90,
-                            flex: "0 0 90px"
-                          }}
-                        />
-                        <button
-                          onClick={() => saveCashback(c.id)}
-                          style={{
-                            background: accent,
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "4px 8px",
-                            cursor: "pointer"
-                          }}
-                        >
-                          <Check size={12} color="#fff" />
-                        </button>
+                        <input value={cashbackInput} onChange={(e) => setCashbackInput(e.target.value)} type="number" style={{ ...inputStyle(border, text), width: 90, flex: "0 0 90px" }} />
+                        <button onClick={() => saveCashback(c.id)} style={{ background: accent, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}><Check size={12} color="#fff" /></button>
                       </>
                     ) : (
                       <>
-                        <b style={{ color: accent }}>
-                          {money(c.cashback)}
-                        </b>
-                        <button
-                          onClick={() => {
-                            setEditingCashback(c.id);
-                            setCashbackInput(String(c.cashback));
-                          }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: 0
-                          }}
-                        >
-                          <Edit2 size={12} color={subtext} />
-                        </button>
+                        <b style={{ color: accent }}>{money(c.cashback)}</b>
+                        <button onClick={() => { setEditingCashback(c.id); setCashbackInput(String(c.cashback)); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><Edit2 size={12} color={subtext} /></button>
                       </>
                     )}
                   </div>
-
-                  {custSales.length === 0 && (
-                    <div style={{ color: subtext }}>
-                      Nenhuma compra registrada.
-                    </div>
-                  )}
-
+                  {custSales.length === 0 && <div style={{ color: subtext }}>Nenhuma compra registrada.</div>}
                   {custSales.map((s) => (
-                    <div
-                      key={s.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "6px 0",
-                        borderTop: `1px dashed ${border}`
-                      }}
-                    >
-                      <span>
-                        {new Date(s.date).toLocaleDateString("pt-BR")} —{" "}
-                        {s.items.map((it) => it.name).join(", ")}
-                      </span>
-                      <span style={{ fontWeight: 700 }}>
-                        {money(s.total)}
-                      </span>
+                    <div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: `1px dashed ${border}` }}>
+                      <span>{new Date(s.date).toLocaleDateString("pt-BR")} — {s.items.map((it) => it.name).join(", ")}</span>
+                      <span style={{ fontWeight: 700 }}>{money(s.total)}</span>
                     </div>
                   ))}
-
-                  <div style={{ marginTop: 8, fontWeight: 700 }}>
-                    Total gasto: {money(totalSpent)}
-                  </div>
+                  <div style={{ marginTop: 8, fontWeight: 700 }}>Total gasto: {money(totalSpent)}</div>
                 </div>
               )}
             </div>

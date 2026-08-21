@@ -14,18 +14,57 @@ function SupplementSystem() {
     const [accent, setAccent] = useState("#DC2626");   
     const [device, setDevice] = useState("mobile");   
     const [tab, setTab] = useState("dashboard");    
-    const [products, setProducts] = useState(seedProducts);  
-    const [customers, setCustomers] = useState(seedCustomers);   
-    const [sellers, setSellers] = useState(seedSellers);   
-    const [sales, setSales] = useState(allSeedSales);   
-    const [fiados, setFiados] = useState(seedFiados);  
-    const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);   
+
+    // 🔄 Estados inicializados verificando o localStorage (começam do zero se não houver dados salvos)
+    const [products, setProducts] = useState(() => {
+        const saved = localStorage.getItem("byse_products");
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [customers, setCustomers] = useState(() => {
+        const saved = localStorage.getItem("byse_customers");
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [sellers, setSellers] = useState(() => {
+        const saved = localStorage.getItem("byse_sellers");
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [sales, setSales] = useState(() => {
+        const saved = localStorage.getItem("byse_sales");
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [fiados, setFiados] = useState(() => {
+        const saved = localStorage.getItem("byse_fiados");
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [adEntries, setAdEntries] = useState(() => {
+        const saved = localStorage.getItem("byse_adEntries");
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    const [stockLocations, setStockLocations] = useState(() => {
+        const saved = localStorage.getItem("byse_stockLocations");
+        return saved ? JSON.parse(saved) : [{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }];
+    });
+
     const [cashbackPct, setCashbackPct] = useState(3);   
     const [cashbackValidityDays, setCashbackValidityDays] = useState(90);   
-    const [adEntries, setAdEntries] = useState(seedAdEntries);   
     const [waSchedule, setWaSchedule] = useState([     { id: 1, label: "Lembrete de saldo cashback", day: "Toda sexta-feira", enabled: true, text: "Oi {nome}, você tem {saldo} em cashback esperando! 🎁" },     { id: 2, label: "Promoção do mês", day: "Dia 5 de cada mês", enabled: true, text: "Oi {nome}! Temos novidades e promoções especiais esse mês na loja. 💪" },     { id: 3, label: "Cliente sumido (30 dias sem comprar)", day: "Dia 15 de cada mês", enabled: false, text: "Sentimos sua falta, {nome}! Faz tempo que você não aparece por aqui." },   ]);    
 
-    // 🔍 Efeito para restaurar a sessão do localStorage ao carregar a página
+    // 💾 Efeitos para salvar automaticamente no localStorage sempre que houver alterações
+    useEffect(() => { localStorage.setItem("byse_products", JSON.stringify(products)); }, [products]);
+    useEffect(() => { localStorage.setItem("byse_customers", JSON.stringify(customers)); }, [customers]);
+    useEffect(() => { localStorage.setItem("byse_sellers", JSON.stringify(sellers)); }, [sellers]);
+    useEffect(() => { localStorage.setItem("byse_sales", JSON.stringify(sales)); }, [sales]);
+    useEffect(() => { localStorage.setItem("byse_fiados", JSON.stringify(fiados)); }, [fiados]);
+    useEffect(() => { localStorage.setItem("byse_adEntries", JSON.stringify(adEntries)); }, [adEntries]);
+    useEffect(() => { localStorage.setItem("byse_stockLocations", JSON.stringify(stockLocations)); }, [stockLocations]);
+
+    // 🔍 Efeito para restaurar a sessão do localStorage ao carregar a página[cite: 15]
     useEffect(() => {
         const savedToken = localStorage.getItem("byse_token");
         const savedUser = localStorage.getItem("byse_user");
@@ -42,7 +81,7 @@ function SupplementSystem() {
         setLoading(false);
     }, []);
 
-    // 🚪 Função para encerrar a sessão (Logout)
+    // 🚪 Função para encerrar a sessão (Logout)[cite: 15]
     const handleLogout = () => {
         localStorage.removeItem("byse_token");
         localStorage.removeItem("byse_user");
@@ -84,7 +123,7 @@ function SupplementSystem() {
         if (tab === "fiados") return <Fiados {...{ fiados, setFiados, customers, card, border, subtext, accent, text }} />;     
         if (tab === "whatsapp") return <WhatsApp {...{ waSchedule, setWaSchedule, cashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "trafego") return <TrafegoPago {...{ adEntries, setAdEntries, sales, card, border, subtext, accent, text }} />;     
-        if (tab === "canais") return <CanaisDeVenda {...{ sales, card, border, subtext, accent, text }} />;     
+        if (tab === "canais") return <CanaisDeVenda {...{ sales, setSales, card, border, subtext, accent, text }} />;     
         if (tab === "dre") return <DRE {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "planos") return <Planos {...{ card, border, subtext, accent, text }} />;     
         if (tab === "menu") return <MenuGridScreen items={mobileMenuItems} onNavigate={setTab} card={card} border={border} subtext={subtext} accent={accent} text={text} />;     

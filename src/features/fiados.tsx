@@ -176,6 +176,18 @@ function Fiados({
       )
     );
 
+  const deleteFiado = (id) => {
+    if (confirm("Tem certeza que deseja excluir este fiado?")) {
+      setFiados((prev) => prev.filter((f) => f.id !== id));
+    }
+  };
+
+  const clearAllFiados = () => {
+    if (confirm("Tem certeza que deseja excluir TODOS os fiados? Esta ação não pode ser desfeita.")) {
+      setFiados([]);
+    }
+  };
+
   return (
     <div>
       <SectionTitle
@@ -184,21 +196,42 @@ function Fiados({
         subtext={subtext}
       />
 
-      <button
-        onClick={() => setShowForm((v) => !v)}
-        style={{
-          background: accent,
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          padding: "9px 14px",
-          fontWeight: 700,
-          cursor: "pointer",
-          marginBottom: 14
-        }}
-      >
-        {showForm ? "Cancelar" : "Novo fiado"}
-      </button>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          style={{
+            background: accent,
+            color: "#fff",
+            border: "none",
+            borderRadius: 8,
+            padding: "9px 14px",
+            fontWeight: 700,
+            cursor: "pointer"
+          }}
+        >
+          {showForm ? "Cancelar" : "Novo fiado"}
+        </button>
+
+        {fiados.length > 0 && (
+          <button
+            onClick={clearAllFiados}
+            style={{
+              background: DANGER,
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "9px 14px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6
+            }}
+          >
+            <Trash2 size={15} /> Limpar tudo
+          </button>
+        )}
+      </div>
 
       {showForm && (
         <div
@@ -274,13 +307,28 @@ function Fiados({
                 padding: 14
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <strong>{f.customerName}</strong>
-                <span>
-                  {money(
-                    f.installments.reduce((a, i) => a + i.value, 0)
-                  )}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontWeight: 700 }}>
+                    {money(
+                      f.installments.reduce((a, i) => a + i.value, 0)
+                    )}
+                  </span>
+                  <button
+                    onClick={() => deleteFiado(f.id)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: DANGER,
+                      padding: 2
+                    }}
+                    title="Excluir fiado"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
 
               <div
@@ -300,7 +348,8 @@ function Fiados({
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    fontSize: 12
+                    fontSize: 12,
+                    marginTop: 6
                   }}
                 >
                   <span>{formatDateShort(i.dueDate)}</span>
