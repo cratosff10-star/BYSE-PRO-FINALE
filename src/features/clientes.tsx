@@ -42,10 +42,10 @@ function Clientes({
   const [editingCashback, setEditingCashback] = useState(null);
   const [cashbackInput, setCashbackInput] = useState("");
 
-  // URL fixa e explícita do backend para evitar falhas de variáveis de ambiente
-  const API_URL = "http://localhost:3333";
+  // Utiliza a variável de ambiente do Railway configurada na Vercel, com fallback para o ambiente local
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
-  // 🔄 Busca os clientes do usuário logado no backend assim que o componente carrega
+  // 🔄 Busca os clientes do usuário logado no backend assim que o componente carrega[cite: 8]
   useEffect(() => {
     const fetchCustomers = async () => {
       const token = localStorage.getItem("byse_token");
@@ -74,7 +74,7 @@ function Clientes({
     c.name.toLowerCase().includes(query.toLowerCase())
   );
 
-  // 💾 Envia o novo cliente para salvar no banco de dados via Backend
+  // 💾 Envia o novo cliente para salvar no banco de dados via Backend[cite: 8]
   const addCustomer = async () => {
     if (!form.name || !form.phone) return;
 
@@ -102,13 +102,13 @@ function Clientes({
       }
 
       const data = await response.json();
-      // Atualiza o estado com o cliente retornado pelo banco (garantindo o ID correto)
+      // Atualiza o estado com o cliente retornado pelo banco (garantindo o ID correto)[cite: 8]
       setCustomers([...customers, data.cliente || data]);
       setForm({ name: "", phone: "", cpf: "" });
       setShowForm(false);
     } catch (error) {
       console.error("Erro ao salvar cliente:", error);
-      alert("Falha de conexão com o servidor. Verifique se o backend está rodando na porta 3333.");
+      alert("Falha de conexão com o servidor. Verifique se o backend está rodando.");
     }
   };
 
