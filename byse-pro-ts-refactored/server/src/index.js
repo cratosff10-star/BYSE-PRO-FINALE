@@ -8,10 +8,37 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Inicializa o banco de dados PostgreSQL ao iniciar o servidor
+// Inicializa o banco de dados PostgreSQL ao iniciar o servidor[cite: 5]
 initDb();
 
-// Middleware de Autenticação
+/**
+ * Rota de Login para autenticação do front-end
+ */
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        const result = await pool.query(
+            'SELECT id, name, email FROM users WHERE email = $1 AND password = $2',
+            [email, password]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+        }
+
+        const user = result.rows[0];
+        return res.status(200).json({
+            token: 'jwt_token_' + user.id,
+            user: { id: user.id, name: user.name, email: user.email }
+        });
+    } catch (error) {
+        console.error('Erro no login:', error);
+        return res.status(500).json({ error: 'Erro interno no servidor.' });
+    }
+});
+
+// Middleware de Autenticação[cite: 5]
 const authMiddleware = (req, res, next) => {
     const userId = req.headers['x-user-id'];
 
@@ -24,7 +51,7 @@ const authMiddleware = (req, res, next) => {
 };
 
 /**
- * Rotas de Configuração da API de WhatsApp do Usuário
+ * Rotas de Configuração da API de WhatsApp do Usuário[cite: 5]
  */
 app.get('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
     try {
@@ -61,7 +88,7 @@ app.post('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Clientes (Compatibilidade com /api/customers e /api/clientes)
+ * Rotas de Clientes (Compatibilidade com /api/customers e /api/clientes)[cite: 5]
  */
 app.get('/api/customers', authMiddleware, async (req, res) => {
     try {
@@ -134,7 +161,7 @@ app.post('/api/clientes', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Produtos e Estoque
+ * Rotas de Produtos e Estoque[cite: 5]
  */
 app.get('/api/produtos', authMiddleware, async (req, res) => {
     try {
@@ -250,7 +277,7 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Programação do WhatsApp
+ * Rotas de Programação do WhatsApp[cite: 5]
  */
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
     try {
@@ -314,7 +341,7 @@ app.post('/api/whatsapp', authMiddleware, async (req, res) => {
 });
 
 /**
- * 🤖 CRON JOB: Disparador Automático Multi-tenant Integrado ao PostgreSQL
+ * 🤖 CRON JOB: Disparador Automático Multi-tenant Integrado ao PostgreSQL[cite: 5]
  */
 cron.schedule('* * * * *', async () => {
     try {
