@@ -4,8 +4,17 @@ import { Users, Package, ShoppingCart, BarChart3, Store, MessageCircle, Gift, Pr
 import { FONT_BODY, FONT_DISPLAY, SUCCESS, DANGER, GLOBAL_CSS, PRESET_COLORS } from "../data/constants";
 import { money, genNoiseSales, genAdEntries, inPeriod } from "../utils/helpers";
 import { LoginScreen, VipWelcome, MenuGridScreen, LogoMark, SLabel } from "../components/common";
-import { Dashboard } from "../features/dashboard"; import { Clientes } from "../features/clientes"; import { Estoque } from "../features/estoque"; import { PDV } from "../features/pdv"; import { Vendedores } from "../features/vendedores"; import { Catalogo } from "../features/catalogo"; import { Cashback } from "../features/cashback"; import { WhatsApp } from "../features/whatsapp"; import { TrafegoPago, CanaisDeVenda } from "../features/marketing"; import { DRE, Planos } from "../features/finance"; import { Fiados } from "../features/fiados";
-import type { Product, Customer, Seller, Sale, StockLocation, AdEntry, WaScheduleEntry, WelcomeConfig } from "../types";
+import { Dashboard } from "../features/dashboard"; 
+import { Clientes } from "../features/clientes"; 
+import { Estoque } from "../features/estoque"; 
+import { PDV } from "../features/pdv"; 
+import { Vendedores } from "../features/vendedores"; 
+import { Catalogo } from "../features/catalogo"; 
+import { Cashback } from "../features/cashback"; 
+import { WhatsApp } from "../features/whatsapp"; 
+import { TrafegoPago, CanaisDeVenda } from "../features/marketing"; 
+import { DRE, Planos } from "../features/finance"; 
+import { Fiados } from "../features/fiados";
 
 const API_URL = "http://localhost:3333/api";
 
@@ -17,17 +26,31 @@ function SupplementSystem() {
     const [device, setDevice] = useState("mobile");   
     const [tab, setTab] = useState("dashboard");    
 
-    const [products, setProducts] = useState([]);
-    const [customers, setCustomers] = useState([]);
-    const [sellers, setSellers] = useState([]);
-    const [sales, setSales] = useState([]);
+    // Inicialização segura com localStorage para evitar perda de dados no reload
+    const [products, setProducts] = useState(() => {
+        try { const saved = localStorage.getItem("byse_products"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
+    });
+    const [customers, setCustomers] = useState(() => {
+        try { const saved = localStorage.getItem("byse_customers"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
+    });
+    const [sellers, setSellers] = useState(() => {
+        try { const saved = localStorage.getItem("byse_sellers"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
+    });
+    const [sales, setSales] = useState(() => {
+        try { const saved = localStorage.getItem("byse_sales"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
+    });
+
     const [fiados, setFiados] = useState([]);
     const [adEntries, setAdEntries] = useState([]);
     const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);
 
     const [cashbackPct, setCashbackPct] = useState(3);   
     const [cashbackValidityDays, setCashbackValidityDays] = useState(90);   
-    const [waSchedule, setWaSchedule] = useState([     { id: 1, label: "Lembrete de saldo cashback", day: "Toda sexta-feira", enabled: true, text: "Oi {nome}, você tem {saldo} em cashback esperando! 🎁" },     { id: 2, label: "Promoção do mês", day: "Dia 5 de cada mês", enabled: true, text: "Oi {nome}! Temos novidades e promoções especiais esse mês na loja. 💪" },     { id: 3, label: "Cliente sumido (30 dias sem comprar)", day: "Dia 15 de cada mês", enabled: false, text: "Sentimos sua falta, {nome}! Faz tempo que você não aparece por aqui." },   ]);    
+    const [waSchedule, setWaSchedule] = useState([     
+      { id: 1, label: "Lembrete de saldo cashback", day: "Toda sexta-feira", enabled: true, text: "Oi {nome}, você tem {saldo} em cashback esperando! 🎁" },     
+      { id: 2, label: "Promoção do mês", day: "Dia 5 de cada mês", enabled: true, text: "Oi {nome}! Temos novidades e promoções especiais esse mês na loja. 💪" },     
+      { id: 3, label: "Cliente sumido (30 dias sem comprar)", day: "Dia 15 de cada mês", enabled: false, text: "Sentimos sua falta, {nome}! Faz tempo que você não aparece por aqui." },   
+    ]);    
 
     const getAuthHeaders = () => {
         const token = localStorage.getItem("byse_token");
@@ -37,21 +60,57 @@ function SupplementSystem() {
         };
     };
 
-    // 🔍 Buscar todos os dados salvos do usuário no banco ao carregar a página
-    const fetchUserData = () => {
+    // 🔍 Sincronização robusta com o backend corrigindo a nomenclatura dos campos
+    const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
-        // Buscar Clientes
-        fetch(`${API_URL}/customers`, { headers })
-            .then(res => res.json())
-            .then(data => { if (Array.isArray(data)) setCustomers(data); })
-            .catch(err => console.error("Erro ao buscar clientes:", err));
+        try {
+            // 1. Buscar Clientes
+            const resCustomers = await fetch(`${API_URL}/customers`, { headers });
+            if (resCustomers.ok) {
+                const data = await resCustomers.json();
+                if (Array.isArray(data)) {
+                    setCustomers(data);
+                    localStorage.setItem("byse_customers", JSON.stringify(data));
+                }
+            }
 
-        // Buscar Compras/Vendas
-        fetch(`${API_URL}/purchases`, { headers })
-            .then(res => res.json())
-            .then(data => { if (Array.isArray(data)) setSales(data); })
-            .catch(err => console.error("Erro ao buscar compras:", err));
+            // 2. Buscar Vendas (Mapeando customer_id para customer para manter compatibilidade)
+            const resSales = await fetch(`${API_URL}/sales`, { headers });
+            if (resSales.ok) {
+                const data = await resSales.json();
+                if (Array.isArray(data)) {
+                    const normalizedSales = data.map(s => ({
+                        ...s,
+                        customer: s.customer || s.customer_id || s.customerId
+                    }));
+                    setSales(normalizedSales);
+                    localStorage.setItem("byse_sales", JSON.stringify(normalizedSales));
+                }
+            }
+
+            // 3. Buscar Produtos
+            const resProducts = await fetch(`${API_URL}/products`, { headers });
+            if (resProducts.ok) {
+                const data = await resProducts.json();
+                if (Array.isArray(data)) {
+                    setProducts(data);
+                    localStorage.setItem("byse_products", JSON.stringify(data));
+                }
+            }
+
+            // 4. Buscar Vendedores
+            const resSellers = await fetch(`${API_URL}/sellers`, { headers });
+            if (resSellers.ok) {
+                const data = await resSellers.json();
+                if (Array.isArray(data)) {
+                    setSellers(data);
+                    localStorage.setItem("byse_sellers", JSON.stringify(data));
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao sincronizar dados com o servidor:", err);
+        }
     };
 
     useEffect(() => {
@@ -62,7 +121,8 @@ function SupplementSystem() {
             try {
                 const parsedUser = JSON.parse(savedUser);
                 setUser(parsedUser);
-                fetchUserData();
+                fetchUserData().finally(() => setLoading(false));
+                return;
             } catch (error) {
                 console.error("Erro ao carregar sessão salva:", error);
                 localStorage.removeItem("byse_token");
@@ -73,6 +133,8 @@ function SupplementSystem() {
     }, []);
 
     const handleLogin = (userData, token) => {
+        if (token) localStorage.setItem("byse_token", token);
+        localStorage.setItem("byse_user", JSON.stringify(userData));
         setUser(userData);
         fetchUserData();
     };
@@ -80,17 +142,24 @@ function SupplementSystem() {
     const handleLogout = () => {
         localStorage.removeItem("byse_token");
         localStorage.removeItem("byse_user");
+        localStorage.removeItem("byse_customers");
+        localStorage.removeItem("byse_products");
+        localStorage.removeItem("byse_sales");
+        localStorage.removeItem("byse_sellers");
         setUser(null);
         setCustomers([]);
         setSales([]);
         setProducts([]);
+        setSellers([]);
+        setFiados([]);
     };
 
-    // Função centralizada para salvar cliente no banco quando atualizado na tela
+    // Salvar/Atualizar clientes com persistência imediata local + backend
     const handleUpdateCustomers = (newCustomers) => {
         setCustomers(newCustomers);
-        // Se for uma função ou array, salvamos o último alterado na API
+        localStorage.setItem("byse_customers", JSON.stringify(newCustomers));
         const latestCustomer = Array.isArray(newCustomers) ? newCustomers[newCustomers.length - 1] : null;
+        
         if (latestCustomer) {
             fetch(`${API_URL}/customers`, {
                 method: "POST",
@@ -99,29 +168,85 @@ function SupplementSystem() {
                     id: latestCustomer.id || `cli_${Date.now()}`,
                     name: latestCustomer.name,
                     phone: latestCustomer.phone,
-                    whatsappOptIn: latestCustomer.whatsappOptIn || false,
-                    remindersEnabled: latestCustomer.remindersEnabled ?? true
+                    cpf: latestCustomer.cpf || "",
+                    cashback: latestCustomer.cashback || 0
                 })
-            }).catch(err => console.error("Erro ao salvar cliente no banco:", err));
+            })
+            .then(res => { if (res.ok) fetchUserData(); })
+            .catch(err => console.error("Erro ao salvar cliente no banco:", err));
         }
     };
 
-    // Função centralizada para salvar venda/compra no banco quando realizada no PDV
-    const handleUpdateSales = (newSales) => {
-        setSales(newSales);
-        const latestSale = Array.isArray(newSales) ? newSales[newSales.length - 1] : null;
-        if (latestSale) {
-            fetch(`${API_URL}/purchases`, {
+    // Salvar/Atualizar produtos
+    const handleUpdateProducts = (newProducts) => {
+        setProducts(newProducts);
+        localStorage.setItem("byse_products", JSON.stringify(newProducts));
+        const latestProduct = Array.isArray(newProducts) ? newProducts[newProducts.length - 1] : null;
+
+        if (latestProduct) {
+            fetch(`${API_URL}/products`, {
                 method: "POST",
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
-                    id: latestSale.id || `pur_${Date.now()}`,
-                    customerId: latestSale.customerId || latestSale.customer_id,
-                    total: latestSale.total,
-                    items: latestSale.items || [],
-                    purchasedAt: latestSale.purchasedAt || new Date().toISOString()
+                    id: latestProduct.id || `prod_${Date.now()}`,
+                    name: latestProduct.name,
+                    category: latestProduct.category || "Geral",
+                    price: Number(latestProduct.price || 0),
+                    barcode: latestProduct.barcode || ""
                 })
-            }).catch(err => console.error("Erro ao salvar compra no banco:", err));
+            })
+            .then(res => { if (res.ok) fetchUserData(); })
+            .catch(err => console.error("Erro ao salvar produto no banco:", err));
+        }
+    };
+
+    // Salvar/Atualizar vendedores
+    const handleUpdateSellers = (newSellers) => {
+        setSellers(newSellers);
+        localStorage.setItem("byse_sellers", JSON.stringify(newSellers));
+        const latestSeller = Array.isArray(newSellers) ? newSellers[newSellers.length - 1] : null;
+
+        if (latestSeller) {
+            fetch(`${API_URL}/sellers`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    id: latestSeller.id || `sel_${Date.now()}`,
+                    name: latestSeller.name
+                })
+            })
+            .then(res => { if (res.ok) fetchUserData(); })
+            .catch(err => console.error("Erro ao salvar vendedor no banco:", err));
+        }
+    };
+
+    // Registrar vendas mapeando corretamente customerId
+    const handleUpdateSales = async (newSales) => {
+        setSales(newSales);
+        localStorage.setItem("byse_sales", JSON.stringify(newSales));
+        const latestSale = Array.isArray(newSales) ? newSales[newSales.length - 1] : null;
+        
+        if (latestSale) {
+            try {
+                const res = await fetch(`${API_URL}/sales`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        id: latestSale.id || `pur_${Date.now()}`,
+                        customerId: latestSale.customer || latestSale.customerId || latestSale.customer_id || null,
+                        total: Number(latestSale.total || 0),
+                        items: latestSale.items || [],
+                        seller: latestSale.seller || null,
+                        purchasedAt: latestSale.date || new Date().toISOString()
+                    })
+                });
+
+                if (res.ok) {
+                    await fetchUserData();
+                }
+            } catch (err) {
+                console.error("Erro de conexão ao registrar venda:", err);
+            }
         }
     };
 
@@ -141,14 +266,24 @@ function SupplementSystem() {
     }
 
     if (!user) {
-        return <LoginScreen accent={accent} onLogin={(userData, token) => {
-            if (token) localStorage.setItem("byse_token", token);
-            localStorage.setItem("byse_user", JSON.stringify(userData));
-            handleLogin(userData, token);
-        }} />;
+        return <LoginScreen accent={accent} onLogin={(userData, token) => handleLogin(userData, token)} />;
     }
 
-    const nav = [     { id: "dashboard", label: "Painel", icon: BarChart3 },     { id: "clientes", label: "Clientes", icon: Users },     { id: "estoque", label: "Estoque", icon: Package },     { id: "pdv", label: "PDV", icon: ShoppingCart },     { id: "vendedores", label: "Vendedores", icon: Award },     { id: "catalogo", label: "Catálogo", icon: Store },     { id: "cashback", label: "Cashback", icon: Gift },     { id: "fiados", label: "Fiados", icon: Wallet },     { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },     { id: "trafego", label: "Tráfego Pago", icon: TrendingUp },     { id: "canais", label: "Canais de Venda", icon: Share2 },     { id: "dre", label: "DRE", icon: Calculator },     { id: "planos", label: "Planos", icon: Percent },   ];   
+    const nav = [     
+      { id: "dashboard", label: "Painel", icon: BarChart3 },     
+      { id: "clientes", label: "Clientes", icon: Users },     
+      { id: "estoque", label: "Estoque", icon: Package },     
+      { id: "pdv", label: "PDV", icon: ShoppingCart },     
+      { id: "vendedores", label: "Vendedores", icon: Award },     
+      { id: "catalogo", label: "Catálogo", icon: Store },     
+      { id: "cashback", label: "Cashback", icon: Gift },     
+      { id: "fiados", label: "Fiados", icon: Wallet },     
+      { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },     
+      { id: "trafego", label: "Tráfego Pago", icon: TrendingUp },     
+      { id: "canais", label: "Canais de Venda", icon: Share2 },     
+      { id: "dre", label: "DRE", icon: Calculator },     
+      { id: "planos", label: "Planos", icon: Percent },   
+    ];   
     const MOBILE_PRIMARY = ["dashboard", "pdv", "clientes", "estoque"];   
     const mobileBottomItems = nav.filter((n) => MOBILE_PRIMARY.includes(n.id));   
     const mobileMenuItems = nav.filter((n) => !MOBILE_PRIMARY.includes(n.id));    
@@ -156,9 +291,9 @@ function SupplementSystem() {
     const renderScreen = () => {     
         if (tab === "dashboard") return <Dashboard {...{ sales, products, customers, sellers, card, border, subtext, accent, text }} />;     
         if (tab === "clientes") return <Clientes customers={customers} setCustomers={handleUpdateCustomers} {...{ sales, card, border, subtext, accent, text }} />;     
-        if (tab === "estoque") return <Estoque {...{ products, setProducts, stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
+        if (tab === "estoque") return <Estoque products={products} setProducts={handleUpdateProducts} {...{ stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
         if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} {...{ fiados, setFiados, cashbackPct, card, border, subtext, accent, text, dark }} />;     
-        if (tab === "vendedores") return <Vendedores {...{ sellers, setSellers, sales, card, border, subtext, accent, text }} />;     
+        if (tab === "vendedores") return <Vendedores sellers={sellers} setSellers={handleUpdateSellers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
         if (tab === "cashback") return <Cashback customers={customers} setCustomers={handleUpdateCustomers} {...{ cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "fiados") return <Fiados {...{ fiados, setFiados, customers, card, border, subtext, accent, text }} />;     
@@ -250,7 +385,7 @@ function SupplementSystem() {
                             <LogOut size={15} /> Sair do sistema             
                         </button>             
                         <div style={{ display: "flex", gap: 6, paddingLeft: 8 }}>               
-                            {PRESET_COLORS.map((c) => (<button key={c} onClick={() => setAccent(c)} style={{ width: 20, height: 20, borderRadius: "50%", background: c, border: accent === c ? `2px solid ${text}` : "1px solid transparent", cursor: "pointer" }} />))}             
+                            {Array.isArray(PRESET_COLORS) ? PRESET_COLORS.map((c) => (<button key={c} onClick={() => setAccent(c)} style={{ width: 20, height: 20, borderRadius: "50%", background: c, border: accent === c ? `2px solid ${text}` : "1px solid transparent", cursor: "pointer" }} />)) : null}             
                         </div>           
                     </div>         
                 </div>         

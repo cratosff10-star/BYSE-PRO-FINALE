@@ -1,281 +1,75 @@
 // @ts-nocheck
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-import {
-  Users,
-  Package,
-  ShoppingCart,
-  BarChart3,
-  Store,
-  MessageCircle,
-  Gift,
-  Printer,
-  Plus,
-  Search,
-  Moon,
-  Sun,
-  Trash2,
-  X,
-  ChevronRight,
-  ChevronLeft,
-  Award,
-  Percent,
-  Eye,
-  EyeOff,
-  Edit2,
-  Check,
-  User,
-  Lock,
-  Menu,
-  Bell,
-  Clipboard,
-  MoreVertical,
-  Tag,
-  Heart,
-  ScanLine,
-  List,
-  History,
-  LayoutGrid,
-  TrendingUp,
-  Share2,
-  Calculator,
-  CreditCard,
-  Truck,
-  Video,
-  Music,
-  Type,
-  Mail,
-  Wallet,
-  Banknote,
-  Save
-} from "lucide-react";
-
-import {
-  FONT_BODY,
-  FONT_DISPLAY,
-  SUCCESS,
-  DANGER,
-  CHANNELS,
-  GENDERS,
-  FULFILLMENTS,
-  MONTH_NAMES,
-  MONTH_SHORT,
-  WEEKDAY_LABELS,
-  WEEKDAY_SHORT,
-  seedCustomers,
-  seedProducts,
-  seedSellers,
-  paymentMethods,
-  HOUR_WEIGHTS,
-  DOW_WEIGHTS,
-  HOUR_SLOTS,
-  CHANNEL_WEIGHTS,
-  GENDER_WEIGHTS,
-  FULFILL_WEIGHTS,
-  PRESET_COLORS,
-  seedSales,
-  allSeedSales,
-  seedAdEntries,
-  seedFiados
-} from "../data/constants";
-
-import {
-  money,
-  formatDateShort,
-  formatDateBadge,
-  formatDateLong,
-  inPeriod,
-  sameOrBefore,
-  sendWhatsAppMessage,
-  sendSMS,
-  fiadoDate,
-  inputStyle,
-  lbl,
-  ghostBtn,
-  hexAlpha
-} from "../utils/helpers";
-
-import {
-  SectionTitle,
-  StatCard,
-  FinanceRow,
-  HBar,
-  WaveChart,
-  Pill,
-  SLabel,
-  PeriodHeader,
-  PeriodModal,
-  SingleDatePicker,
-  MenuGridScreen,
-  LogoMark,
-  VipWelcome
-} from "../components/common";
-
-import type {
-  Product,
-  Customer,
-  Seller,
-  Sale,
-  StockLocation,
-  AdEntry,
-  WaScheduleEntry,
-  WelcomeConfig
-} from "../types";
-
-
-const CAT_COLORS = {
-  Proteínas: { main: "#DC2626", dark: "#7F1D1D", abbr: "PRO" },
-  Creatina: { main: "#2563EB", dark: "#1E3A8A", abbr: "CRE" },
-  "Pré-treino": { main: "#0F766E", dark: "#134E4A", abbr: "PRÉ" },
-  Aminoácidos: { main: "#6B7280", dark: "#374151", abbr: "AMI" },
-  Serviços: { main: "#78716C", dark: "#44403C", abbr: "SER" },
-  Emagrecimento: { main: "#EA580C", dark: "#7C2D12", abbr: "EMA" },
-  "Saúde e bem-estar": { main: "#059669", dark: "#064E3B", abbr: "S&B" }
-};
-
-const NEUTRAL_TILE = { main: "#9CA3AF", dark: "#4B5563" };
-
-function catColor(cat) {
-  return (
-    CAT_COLORS[cat] || {
-      main: "#7C3AED",
-      dark: "#4C1D95",
-      abbr: cat.slice(0, 3).toUpperCase()
-    }
-  );
-}
-
-function CatTile({ label, abbr, Icon, colors, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 10,
-        overflow: "hidden",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-        minHeight: 72
-      }}
-    >
-      <div
-        style={{
-          flex: 1,
-          background: colors.main,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-          padding: 10
-        }}
-      >
-        {Icon ? (
-          <Icon size={22} />
-        ) : (
-          <span style={{ fontFamily: FONT_DISPLAY, fontSize: 20 }}>
-            {abbr}
-          </span>
-        )}
-      </div>
-      <div
-        style={{
-          background: colors.dark,
-          color: "#fff",
-          fontSize: 9.5,
-          fontWeight: 700,
-          textAlign: "center",
-          padding: "5px 3px",
-          lineHeight: 1.2
-        }}
-      >
-        {label.toUpperCase()}
-      </div>
-    </button>
-  );
-}
+import React, { useState } from "react";
+import { Search, X, UserPlus, ShoppingCart, ArrowLeft } from "lucide-react";
+import { inputStyle, lbl } from "../utils/helpers";
+import { SectionTitle } from "../components/common";
+import { CustomerRegistration } from "./CustomerRegistration";
 
 export function PDV({
   device,
-  products,
-  customers,
+  customers = [],
   setCustomers,
-  sellers,
-  sales,
+  products = [],
+  sellers = [],
+  sales = [],
   setSales,
-  cashbackPct,
   card,
   border,
   subtext,
   accent,
-  text,
-  dark
+  text
 }) {
-  const [step, setStep] = useState("gate");
+  const [step, setStep] = useState("gate"); // "gate", "register", "order"
   const [phoneQuery, setPhoneQuery] = useState("");
   const [foundCustomer, setFoundCustomer] = useState(null);
-  const [activeCustomerId, setActiveCustomerId] = useState(null);
-  const [regTab, setRegTab] = useState("dados");
-  const [regForm, setRegForm] = useState({
-    name: "",
-    phone: "",
-    birth: "",
-    sex: "Masculino",
-    cpf: "",
-    email: "",
-    group: "Tipo único",
-    descontoAtivo: false,
-    descontoPct: "0",
-    descontoValidade: "",
-    fiadoAtivo: false,
-    fiadoLimite: "100",
-    fiadoValidade: "",
-    cep: "",
-    endereco: "",
-    numero: "",
-    bairro: "",
-    cidade: "",
-    estado: ""
-  });
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  // Estados do Pedido / Venda
+  const [productQuery, setProductQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Todos produtos");
+  const [cart, setCart] = useState([]);
+  const [seller, setSeller] = useState(sellers[0]?.name || "Juliana Costa");
+  const [paymentMethod, setPaymentMethod] = useState("Pix");
+  const [discount, setDiscount] = useState(0);
+  const [gender, setGender] = useState("Prefiro não informar");
+  const [salesChannel, setSalesChannel] = useState("Loja física");
+  const [deliveryType, setDeliveryType] = useState("Retirada");
+
+  const categories = [
+    "Todos produtos",
+    ...Array.from(new Set(products.map((p) => p.category || "Sem categoria")))
+  ];
 
   const search = () => {
     const match = customers.find(
       (c) =>
+        c.phone &&
         c.phone.replace(/\D/g, "").includes(phoneQuery.replace(/\D/g, "")) &&
         phoneQuery.length >= 3
     );
     setFoundCustomer(match || null);
-    if (!match) setRegForm((f) => ({ ...f, phone: phoneQuery }));
   };
 
-  const confirmFound = () => {
-    setActiveCustomerId(foundCustomer.id);
-    setStep("order");
-  };
-
-  const goRegister = () => setStep("register");
-
-  const skipRegister = () => {
-    setActiveCustomerId(null);
-    setStep("order");
-  };
-
-  const saveRegister = () => {
-    if (!regForm.name || !regForm.phone) return;
+  const saveNewCustomer = (newCustomerData) => {
     const newCust = {
       id: "c" + Date.now(),
-      name: regForm.name,
-      phone: regForm.phone,
-      cpf: regForm.cpf,
-      cashback: 0,
-      sex: regForm.sex,
-      fiadoAtivo: regForm.fiadoAtivo,
-      fiadoLimite: parseFloat(regForm.fiadoLimite) || 0
+      ...newCustomerData,
+      cashback: 0
     };
-    setCustomers((prev) => [...prev, newCust]);
-    setActiveCustomerId(newCust.id);
+    if (typeof setCustomers === "function") {
+      setCustomers([...customers, newCust]);
+    }
+    setSelectedCustomer(newCust);
+    setStep("order");
+  };
+
+  const startOrderWithoutCustomer = () => {
+    setSelectedCustomer(null);
+    setStep("order");
+  };
+
+  const startOrderWithFoundCustomer = (cust) => {
+    setSelectedCustomer(cust);
     setStep("order");
   };
 
@@ -283,113 +77,636 @@ export function PDV({
     setStep("gate");
     setPhoneQuery("");
     setFoundCustomer(null);
-    setActiveCustomerId(null);
-    setRegTab("dados");
+    setSelectedCustomer(null);
+    setCart([]);
+    setProductQuery("");
   };
 
-  useEffect(() => {
-    if (step !== "register") return;
-    const handler = (e) => {
-      if (e.key === "Escape") backToGate();
-      else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        saveRegister();
+  const addToCart = (prod) => {
+    setCart((prev) => {
+      const exists = prev.find((item) => item.id === prod.id);
+      if (exists) {
+        return prev.map((item) =>
+          item.id === prod.id ? { ...item, qty: item.qty + 1 } : item
+        );
       }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+      return [...prev, { ...prod, qty: 1 }];
+    });
+  };
+
+  const filteredProducts = products.filter((p) => {
+    const matchesCategory =
+      selectedCategory === "Todos produtos" || p.category === selectedCategory;
+    const query = productQuery.toLowerCase();
+    const matchesQuery =
+      (p.name && p.name.toLowerCase().includes(query)) ||
+      (p.barcode && p.barcode.toLowerCase().includes(query)) ||
+      (p.code && p.code.toLowerCase().includes(query));
+    return matchesCategory && matchesQuery;
   });
 
-  if (step === "gate") {
-    const big = device === "desktop";
-    return (
-      <div>
-        <SectionTitle
-          title="PDV — Ponto de venda"
-          sub="Busque o telefone do cliente para iniciar o pedido"
-          subtext={subtext}
-        />
-        <div
-          style={{
-            background: card,
-            border: `1px solid ${border}`,
-            borderRadius: big ? 18 : 14,
-            padding: big ? 44 : 20,
-            maxWidth: big ? 560 : "100%"
-          }}
-        >
+  const subtotal = cart.reduce((acc, item) => acc + (Number(item.price) || 0) * item.qty, 0);
+  const total = Math.max(0, subtotal - Number(discount));
+
+  const finalizeSale = async () => {
+    if (cart.length === 0) {
+      alert("O carrinho está vazio!");
+      return;
+    }
+
+    const newSale = {
+      id: `pur_${Date.now()}`,
+      customerId: selectedCustomer ? selectedCustomer.id : null,
+      customer_name: selectedCustomer ? selectedCustomer.name : "Cliente Geral",
+      seller: seller,
+      payment_method: paymentMethod,
+      discount: Number(discount) || 0,
+      total: total,
+      subtotal: subtotal,
+      gender: gender,
+      sales_channel: salesChannel,
+      delivery_type: deliveryType,
+      items: cart,
+      date: new Date().toISOString()
+    };
+
+    try {
+      if (typeof setSales === "function") {
+        await setSales([...sales, newSale]);
+      }
+      alert("Venda finalizada e salva com sucesso!");
+      backToGate();
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao conectar com o servidor para salvar a venda.");
+    }
+  };
+
+  return (
+    <div style={{ padding: device === "desktop" ? 20 : 10 }}>
+      {step === "gate" && (
+        <div>
+          <SectionTitle
+            title="PDV — Ponto de Venda"
+            sub="Busque um cliente, cadastre ou inicie uma venda rápida"
+          />
           <div
             style={{
-              fontFamily: FONT_DISPLAY,
-              fontSize: big ? 26 : 18,
-              letterSpacing: 1,
-              marginBottom: big ? 8 : 4
+              background: card,
+              border: `1px solid ${border}`,
+              borderRadius: 14,
+              padding: 20,
+              maxWidth: 500
             }}
           >
-            DADOS DO CLIENTE
-          </div>
-          <div
-            style={{
-              fontSize: big ? 14.5 : 12.5,
-              color: subtext,
-              marginBottom: big ? 24 : 16
-            }}
-          >
-            Digite o telefone para localizar ou iniciar um novo cadastro
-          </div>
-          <label style={{ ...lbl(subtext), fontSize: big ? 12.5 : 10.5 }}>
-            TELEFONE
-          </label>
-          <div
-            style={{
-              display: "flex",
-              gap: big ? 12 : 8,
-              marginTop: 4,
-              marginBottom: big ? 20 : 14
-            }}
-          >
-            <input
-              value={phoneQuery}
-              onChange={(e) => {
-                setPhoneQuery(e.target.value);
-                setFoundCustomer(null);
-              }}
-              placeholder="(00) 00000-0000"
-              style={{
-                ...inputStyle(border, text),
-                flex: 1,
-                fontSize: big ? 16 : 13,
-                padding: big ? "13px 14px" : "8px 10px"
-              }}
-            />
             <button
-              onClick={search}
+              onClick={startOrderWithoutCustomer}
               style={{
                 background: accent,
+                color: "#fff",
                 border: "none",
+                padding: "12px",
                 borderRadius: 8,
-                padding: big ? "0 22px" : "0 14px",
+                width: "100%",
+                cursor: "pointer",
+                fontWeight: "bold",
+                marginBottom: 20,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8
+              }}
+            >
+              <ShoppingCart size={18} /> Venda Rápida (Sem Cadastro)
+            </button>
+
+            <div
+              style={{
+                borderTop: `1px solid ${border}`,
+                paddingTop: 15,
+                marginBottom: 15
+              }}
+            ></div>
+
+            <label style={lbl(subtext)}>BUSCAR CLIENTE POR TELEFONE</label>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input
+                value={phoneQuery}
+                onChange={(e) => {
+                  setPhoneQuery(e.target.value);
+                  if (!e.target.value) setFoundCustomer(null);
+                }}
+                placeholder="(00) 00000-0000"
+                style={{ ...inputStyle(border, text), flex: 1 }}
+              />
+              <button
+                onClick={search}
+                style={{
+                  background: accent,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "0 15px",
+                  cursor: "pointer"
+                }}
+              >
+                <Search size={20} color="#fff" />
+              </button>
+            </div>
+
+            {foundCustomer && (
+              <div
+                style={{
+                  marginTop: 15,
+                  padding: 12,
+                  background: `${accent}15`,
+                  borderRadius: 8
+                }}
+              >
+                <p>
+                  Cliente encontrado:{" "}
+                  <strong>{foundCustomer.name}</strong>
+                </p>
+                <button
+                  onClick={() => startOrderWithFoundCustomer(foundCustomer)}
+                  style={{
+                    ...inputStyle(border, text),
+                    cursor: "pointer",
+                    marginTop: 8,
+                    width: "100%",
+                    background: accent,
+                    color: "#fff",
+                    border: "none"
+                  }}
+                >
+                  Iniciar Pedido com Cliente
+                </button>
+              </div>
+            )}
+
+            {!foundCustomer && phoneQuery.length >= 3 && (
+              <p style={{ color: subtext, marginTop: 15 }}>
+                Cliente não encontrado.
+              </p>
+            )}
+
+            <div
+              style={{
+                marginTop: foundCustomer ? 12 : 20,
+                borderTop: `1px solid ${border}`,
+                paddingTop: 15
+              }}
+            >
+              <button
+                onClick={() => setStep("register")}
+                style={{
+                  background: "transparent",
+                  color: accent,
+                  border: `1px solid ${accent}`,
+                  padding: 10,
+                  borderRadius: 8,
+                  width: "100%",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  fontWeight: "bold"
+                }}
+              >
+                <UserPlus size={18} /> Cadastrar Novo Cliente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === "register" && (
+        <div>
+          <button
+            onClick={backToGate}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              marginBottom: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              color: text
+            }}
+          >
+            <X size={16} /> Voltar
+          </button>
+          <CustomerRegistration
+            card={card}
+            border={border}
+            text={text}
+            subtext={subtext}
+            accent={accent}
+            onSave={saveNewCustomer}
+          />
+        </div>
+      )}
+
+      {step === "order" && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              device === "desktop" ? "2fr 1fr" : "1fr",
+            gap: 20
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 15
+              }}
+            >
+              <button
+                onClick={backToGate}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${border}`,
+                  borderRadius: 8,
+                  padding: 8,
+                  cursor: "pointer",
+                  color: text,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5
+                }}
+              >
+                <ArrowLeft size={16} /> Trocar cliente
+              </button>
+              <div
+                style={{
+                  background: card,
+                  border: `1px solid ${border}`,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  color: text
+                }}
+              >
+                Cliente:{" "}
+                <strong>
+                  {selectedCustomer
+                    ? selectedCustomer.name
+                    : "Sem cliente"}
+                </strong>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 15 }}>
+              <div
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center"
+                }}
+              >
+                <Search
+                  size={18}
+                  color={subtext}
+                  style={{ position: "absolute", left: 12 }}
+                />
+                <input
+                  value={productQuery}
+                  onChange={(e) => setProductQuery(e.target.value)}
+                  placeholder="Pesquisar produto por nome ou código de barras..."
+                  style={{
+                    ...inputStyle(border, text),
+                    paddingLeft: 38,
+                    width: "100%"
+                  }}
+                />
+                {productQuery && (
+                  <button
+                    onClick={() => setProductQuery("")}
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      color: subtext
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                overflowX: "auto",
+                paddingBottom: 10,
+                marginBottom: 15
+              }}
+            >
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  style={{
+                    background:
+                      selectedCategory === cat ? accent : card,
+                    color: selectedCategory === cat ? "#fff" : text,
+                    border: `1px solid ${border}`,
+                    borderRadius: 20,
+                    padding: "6px 14px",
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                    fontSize: 13
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fill, minmax(200px, 1fr))",
+                gap: 12
+              }}
+            >
+              {filteredProducts.length === 0 ? (
+                <p
+                  style={{
+                    color: subtext,
+                    fontSize: 14,
+                    gridColumn: "1 / -1"
+                  }}
+                >
+                  Nenhum produto cadastrado ou encontrado.
+                </p>
+              ) : (
+                filteredProducts.map((prod) => (
+                  <div
+                    key={prod.id}
+                    onClick={() => addToCart(prod)}
+                    style={{
+                      background: card,
+                      border: `1px solid ${border}`,
+                      borderRadius: 10,
+                      padding: 15,
+                      cursor: "pointer"
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontWeight: "bold",
+                        color: text,
+                        fontSize: 14,
+                        marginBottom: 4
+                      }}
+                    >
+                      {prod.name}
+                    </p>
+                    <p
+                      style={{
+                        color: subtext,
+                        fontSize: 11,
+                        marginBottom: 8
+                      }}
+                    >
+                      {prod.barcode
+                        ? `Cód: ${prod.barcode}`
+                        : prod.category}
+                    </p>
+                    <p
+                      style={{
+                        color: accent,
+                        fontWeight: "600"
+                      }}
+                    >
+                      {Number(prod.price || 0).toLocaleString("pt-BR", {
+                        style: "currency",
+                        currency: "BRL"
+                      })}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: card,
+              border: `1px solid ${border}`,
+              borderRadius: 14,
+              padding: 15,
+              height: "fit-content"
+            }}
+          >
+            <h3
+              style={{
+                color: text,
+                marginBottom: 10,
+                fontSize: 16
+              }}
+            >
+              Carrinho
+            </h3>
+            {cart.length === 0 ? (
+              <p
+                style={{
+                  color: subtext,
+                  fontSize: 13,
+                  marginBottom: 15
+                }}
+              >
+                Nenhum item adicionado.
+              </p>
+            ) : (
+              <div
+                style={{
+                  marginBottom: 15,
+                  maxHeight: 150,
+                  overflowY: "auto"
+                }}
+              >
+                {cart.map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 13,
+                      marginBottom: 6,
+                      color: text
+                    }}
+                  >
+                    <span>
+                      {item.qty}x {item.name}
+                    </span>
+                    <span>
+                      {((Number(item.price) || 0) * item.qty).toLocaleString("pt-BR", {
+                        style: "currency",
+                        currency: "BRL"
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <label style={lbl(subtext)}>Vendedor</label>
+            <select
+              value={seller}
+              onChange={(e) => setSeller(e.target.value)}
+              style={{ ...inputStyle(border, text), marginBottom: 10 }}
+            >
+              <option value="Juliana Costa">Juliana Costa</option>
+              <option value="Bruno Lima">Bruno Lima</option>
+              <option value="Pedro">Pedro</option>
+            </select>
+
+            <label style={lbl(subtext)}>Forma de pagamento</label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              style={{ ...inputStyle(border, text), marginBottom: 10 }}
+            >
+              <option value="Pix">Pix</option>
+              <option value="Crédito">Crédito</option>
+              <option value="Crédito parcelado">Crédito parcelado</option>
+              <option value="Débito">Débito</option>
+              <option value="Dinheiro">Dinheiro</option>
+              <option value="Fiado">Fiado</option>
+            </select>
+
+            <label style={lbl(subtext)}>Desconto (R$)</label>
+            <input
+              type="number"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              style={{ ...inputStyle(border, text), marginBottom: 10 }}
+            />
+
+            <label style={lbl(subtext)}>Gênero</label>
+            <select
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              style={{ ...inputStyle(border, text), marginBottom: 10 }}
+            >
+              <option value="Masculino">Masculino</option>
+              <option value="Feminino">Feminino</option>
+              <option value="Prefiro não informar">
+                Prefiro não informar
+              </option>
+            </select>
+
+            <label style={lbl(subtext)}>Canal de venda</label>
+            <select
+              value={salesChannel}
+              onChange={(e) => setSalesChannel(e.target.value)}
+              style={{ ...inputStyle(border, text), marginBottom: 10 }}
+            >
+              <option value="Instagram">Instagram</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Degustação">Degustação</option>
+              <option value="Loja física">Loja física</option>
+            </select>
+
+            <label style={lbl(subtext)}>Entrega</label>
+            <select
+              value={deliveryType}
+              onChange={(e) => setDeliveryType(e.target.value)}
+              style={{ ...inputStyle(border, text), marginBottom: 15 }}
+            >
+              <option value="Retirada">Retirada</option>
+              <option value="Delivery">Delivery</option>
+            </select>
+
+            <div
+              style={{
+                borderTop: `1px solid ${border}`,
+                paddingTop: 10,
+                marginBottom: 15,
+                fontSize: 13,
+                color: text
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 4
+                }}
+              >
+                <span>Subtotal</span>
+                <span>
+                  {subtotal.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL"
+                  })}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 4
+                }}
+              >
+                <span>Desconto</span>
+                <span>
+                  -{Number(discount).toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL"
+                  })}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontWeight: "bold",
+                  fontSize: 15,
+                  marginTop: 6,
+                  color: accent
+                }}
+              >
+                <span>Total</span>
+                <span>
+                  {total.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL"
+                  })}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={finalizeSale}
+              style={{
+                background: accent,
+                color: "#fff",
+                border: "none",
+                padding: 12,
+                borderRadius: 8,
+                width: "100%",
+                fontWeight: "bold",
                 cursor: "pointer"
               }}
             >
-              <Search size={big ? 22 : 16} color="#fff" />
+              Finalizar venda
             </button>
           </div>
-          {phoneQuery.length >= 3 && foundCustomer && (
-            <div
-              style={{
-                background: `${accent}14`,
-                border: `1px solid ${accent}44`,
-                borderRadius: 10,
-                padding: big ? 18 : 12,
-                marginBottom: 12
-              }}
-            >
-            </div>
-          )}
         </div>
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
 }
-

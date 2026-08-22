@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 import {
   Plus,
@@ -42,24 +42,74 @@ function Clientes({
   const [editingCashback, setEditingCashback] = useState(null);
   const [cashbackInput, setCashbackInput] = useState("");
 
+  // URL fixa e explícita do backend para evitar falhas de variáveis de ambiente
+  const API_URL = "http://localhost:3333";
+
+  // 🔄 Busca os clientes do usuário logado no backend assim que o componente carrega
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+      try {
+        const response = await fetch(`${API_URL}/api/clientes`, {
+          headers: { 
+            "Authorization": `Bearer ${token}`,
+            "x-user-id": user.id || "user_1" 
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCustomers(data);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar clientes:", error);
+      }
+    };
+
+    fetchCustomers();
+  }, []);
+
   const filtered = customers.filter((c) =>
     c.name.toLowerCase().includes(query.toLowerCase())
   );
 
-  const addCustomer = () => {
+  // 💾 Envia o novo cliente para salvar no banco de dados via Backend
+  const addCustomer = async () => {
     if (!form.name || !form.phone) return;
-    setCustomers([
-      ...customers,
-      {
-        id: "c" + Date.now(),
-        name: form.name,
-        phone: form.phone,
-        cpf: form.cpf,
-        cashback: 0
+
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    try {
+      const response = await fetch(`${API_URL}/api/clientes`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "x-user-id": user.id || "user_1"
+        },
+        body: JSON.stringify({
+          name: form.name,
+          phone: form.phone,
+          cpf: form.cpf,
+          cashback: 0
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`);
       }
-    ]);
-    setForm({ name: "", phone: "", cpf: "" });
-    setShowForm(false);
+
+      const data = await response.json();
+      // Atualiza o estado com o cliente retornado pelo banco (garantindo o ID correto)
+      setCustomers([...customers, data.cliente || data]);
+      setForm({ name: "", phone: "", cpf: "" });
+      setShowForm(false);
+    } catch (error) {
+      console.error("Erro ao salvar cliente:", error);
+      alert("Falha de conexão com o servidor. Verifique se o backend está rodando na porta 3333.");
+    }
   };
 
   const deleteCustomer = (id, e) => {

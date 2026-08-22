@@ -136,9 +136,13 @@ function Dashboard({
   text
 }) {
   const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  // Período inicial padrão (Últimos 30 dias)
   const [periodStart, setPeriodStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 29);
+    d.setHours(0, 0, 0, 0);
     return d;
   });
   const [periodEnd, setPeriodEnd] = useState(today);
@@ -148,61 +152,98 @@ function Dashboard({
     setPeriodEnd(e);
   };
 
+  // Funções de atalho para os filtros de período solicitado
+  const setFilterToday = () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    setPeriod(start, end);
+  };
+
+  const setFilterThisWeek = () => {
+    const start = new Date();
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1); // Início na segunda-feira
+    start.setDate(diff);
+    start.setHours(0, 0, 0, 0);
+    
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    setPeriod(start, end);
+  };
+
+  const setFilterThisMonth = () => {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    setPeriod(start, end);
+  };
+
   const [showComm, setShowComm] = useState(false);
 
+  // Filtra as vendas estritamente dentro do período selecionado
   const periodSales = sales.filter((s) =>
     inPeriod(s.date, periodStart, periodEnd)
   );
-  const totalVendido = periodSales.reduce((s, v) => s + v.total, 0);
+  
+  // Venda Total = Apenas a soma em dinheiro das vendas realizadas no período selecionado
+  const totalVendido = periodSales.reduce((s, v) => s + Number(v.total || 0), 0);
+  
   const custoTotal = periodSales.reduce(
     (s, v) =>
-      s + v.items.reduce((a, it) => a + it.cost * it.qty, 0),
+      s + (v.items && Array.isArray(v.items) ? v.items.reduce((a, it) => a + (Number(it.cost || 0) * Number(it.qty || 1)), 0) : 0),
     0
   );
+  
   const lucroBruto = totalVendido - custoTotal;
   const numVendas = periodSales.length;
 
   const commBySeller = sellers.map((s) => {
-    const ss = periodSales.filter((v) => v.seller === s.id);
-    const tot = ss.reduce((a, v) => a + v.total, 0);
-    return { name: s.name, commission: (tot * s.commissionPct) / 100 };
+    const ss = periodSales.filter((v) => v.seller === s.id || v.seller === s.name);
+    const tot = ss.reduce((a, v) => a + Number(v.total || 0), 0);
+    return { name: s.name, commission: (tot * Number(s.commissionPct || 0)) / 100 };
   });
   const commTotal = commBySeller.reduce((a, c) => a + c.commission, 0);
 
   const stockQty = products.reduce(
     (s, p) =>
       p.controlStock
-        ? s + Object.values(p.stocks).reduce((a, b) => a + b, 0)
+        ? s + Object.values(p.stocks || {}).reduce((a, b) => a + Number(b || 0), 0)
         : s,
     0
   );
+  
   const stockCost = products.reduce((s, p) => {
     if (!p.controlStock) return s;
-    const q = Object.values(p.stocks).reduce((a, b) => a + b, 0);
-    return s + q * p.cost;
+    const q = Object.values(p.stocks || {}).reduce((a, b) => a + Number(b || 0), 0);
+    return s + q * Number(p.cost || 0);
   }, 0);
+  
   const stockValue = products.reduce((s, p) => {
     if (!p.controlStock) return s;
-    const q = Object.values(p.stocks).reduce((a, b) => a + b, 0);
-    return s + q * p.price;
+    const q = Object.values(p.stocks || {}).reduce((a, b) => a + Number(b || 0), 0);
+    return s + q * Number(p.price || 0);
   }, 0);
 
   const itemCount = {};
-  periodSales.forEach((s) =>
-    s.items.forEach((it) => {
-      itemCount[it.name] = (itemCount[it.name] || 0) + it.qty;
-    })
-  );
+  periodSales.forEach((s) => {
+    if (s.items && Array.isArray(s.items)) {
+      s.items.forEach((it) => {
+        itemCount[it.name] = (itemCount[it.name] || 0) + Number(it.qty || 1);
+      });
+    }
+  });
+  
   const topItems = Object.entries(itemCount)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
   const periodCustomers = {};
   periodSales.forEach((s) => {
-    if (!s.customer) return;
-    const cust = customers.find((c) => c.id === s.customer);
-    const label = cust ? cust.name : "Cliente";
-    periodCustomers[label] = (periodCustomers[label] || 0) + s.total;
+    const label = s.customer_name || (customers.find((c) => c.id === s.customer)?.name) || "Venda Balcão";
+    periodCustomers[label] = (periodCustomers[label] || 0) + Number(s.total || 0);
   });
 
   const byHour = Array(HOUR_SLOTS.length).fill(0);
@@ -211,7 +252,7 @@ function Dashboard({
     const d = new Date(s.date);
     const hi = HOUR_SLOTS.indexOf(d.getHours());
     if (hi >= 0) byHour[hi]++;
-    byDow[d.getDay()]++;
+    if (!isNaN(d.getDay())) byDow[d.getDay()]++;
   });
 
   const peakHourIdx = byHour.indexOf(Math.max(...byHour));
@@ -227,14 +268,6 @@ function Dashboard({
     "sexta-feira",
     "sábado"
   ];
-
-  const startOfMonth = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    1
-  );
-  const start30 = new Date();
-  start30.setDate(start30.getDate() - 29);
 
   return (
     <div>
@@ -360,22 +393,22 @@ function Dashboard({
         }}
       >
         <button
-          onClick={() => setPeriod(today, today)}
+          onClick={setFilterToday}
           style={ghostBtn(border, text)}
         >
           Hoje
         </button>
         <button
-          onClick={() => setPeriod(startOfMonth, today)}
+          onClick={setFilterThisWeek}
+          style={ghostBtn(border, text)}
+        >
+          Esta semana
+        </button>
+        <button
+          onClick={setFilterThisMonth}
           style={ghostBtn(border, text)}
         >
           Este mês
-        </button>
-        <button
-          onClick={() => setPeriod(start30, today)}
-          style={ghostBtn(border, text)}
-        >
-          Últimos 30 dias
         </button>
       </div>
 
@@ -404,7 +437,7 @@ function Dashboard({
         <FinanceRow
           color={accent}
           label="Total vendido"
-          sub="Valor bruto"
+          sub="Valor em dinheiro das vendas do período"
           value={money(totalVendido)}
         />
         <FinanceRow

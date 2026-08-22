@@ -1,7 +1,6 @@
 // @ts-nocheck
 
 import React, { useEffect, useMemo, useState } from "react";
-
 import {
   Users,
   User,
@@ -11,16 +10,12 @@ import {
   Edit2,
   Save,
   X,
-  MessageCircle
+  MessageCircle,
+  Key
 } from "lucide-react";
-
 import { FONT_BODY, SUCCESS } from "../data/constants";
 import { inputStyle } from "../utils/helpers";
 import { SectionTitle, Pill, SLabel } from "../components/common";
-
-/* =========================================================
-   DIAS DA SEMANA
-   ========================================================= */
 
 const WEEK_DAYS = [
   { value: "segunda", label: "Segunda-feira" },
@@ -32,18 +27,10 @@ const WEEK_DAYS = [
   { value: "domingo", label: "Domingo" }
 ];
 
-/* =========================================================
-   MENSAGEM PADRÃO
-   ========================================================= */
-
 const DEFAULT_MESSAGE =
   "Olá {nome}! 👋\n\n" +
   "Temos novidades especiais para você na BYSE PRO.\n\n" +
-  "Passe para conferir nossas ofertas e aproveite seu cashback! 🎁";
-
-/* =========================================================
-   NOVA PROGRAMAÇÃO
-   ========================================================= */
+  "Passe para conferir nossas ofertas e aproveite seu cashback! 🎁 (Saldo: {saldo})";
 
 const createSchedule = (number) => ({
   id: `wa-${Date.now()}-${number}`,
@@ -56,43 +43,107 @@ const createSchedule = (number) => ({
   customerIds: []
 });
 
-/* =========================================================
-   COMPONENTE PRINCIPAL
-   ========================================================= */
-
 function WhatsApp({
   waSchedule,
   setWaSchedule,
-  cashbackValidityDays,
   card,
   border,
   subtext,
   accent,
   text,
-  customers = [],
-  onGoCustomers
+  customers = []
 }) {
-  /* ---------------------------------------------
-     GARANTIR 3 PROGRAMAÇÕES (E MIGRAR "day" ANTIGO)
-     --------------------------------------------- */
+  const API_URL = "http://localhost:3333";
+
+  const [apiUrlInput, setApiUrlInput] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [configSaved, setConfigSaved] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+      const headers = { "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" };
+
+      try {
+        const resConfig = await fetch(`${API_URL}/api/user/whatsapp-config`, { headers });
+        if (resConfig.ok) {
+          const configData = await resConfig.json();
+          setApiUrlInput(configData.apiUrl || "");
+          setApiKeyInput(configData.apiKey || "");
+        }
+
+        const response = await fetch(`${API_URL}/api/whatsapp`, { headers });
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setWaSchedule(data);
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dados do WhatsApp:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const saveUserConfig = async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    try {
+      const res = await fetch(`${API_URL}/api/user/whatsapp-config`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "x-user-id": user.id || "user_1"
+        },
+        body: JSON.stringify({ apiUrl: apiUrlInput, apiKey: apiKeyInput })
+      });
+
+      if (res.ok) {
+        setConfigSaved(true);
+        setTimeout(() => setConfigSaved(false), 3000);
+      }
+    } catch (error) {
+      console.error("Erro ao salvar credenciais:", error);
+    }
+  };
+
+  const persistSchedules = async (newSchedules) => {
+    setWaSchedule(newSchedules);
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    try {
+      await fetch(`${API_URL}/api/whatsapp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "x-user-id": user.id || "user_1"
+        },
+        body: JSON.stringify(newSchedules)
+      });
+    } catch (error) {
+      console.error("Erro ao salvar programações no servidor:", error);
+    }
+  };
 
   const normalizedSchedule = useMemo(() => {
     const current = (Array.isArray(waSchedule) ? waSchedule : []).map(
       (item, index) => ({
         ...createSchedule(index + 1),
         ...item,
-        days: Array.isArray(item?.days)
-          ? item.days
-          : item?.day
-          ? [item.day]
-          : []
+        days: Array.isArray(item?.days) ? item.days : item?.day ? [item.day] : []
       })
     );
-
     while (current.length < 3) {
       current.push(createSchedule(current.length + 1));
     }
-
     return current.slice(0, 3);
   }, [waSchedule]);
 
@@ -102,10 +153,6 @@ function WhatsApp({
     }
   }, [waSchedule, normalizedSchedule, setWaSchedule]);
 
-  /* ---------------------------------------------
-     ESTADOS DA INTERFACE
-     --------------------------------------------- */
-
   const [editingId, setEditingId] = useState(null);
   const [editDays, setEditDays] = useState([]);
   const [editTime, setEditTime] = useState("10:00");
@@ -113,42 +160,19 @@ function WhatsApp({
   const [editSendToAll, setEditSendToAll] = useState(true);
   const [editCustomerIds, setEditCustomerIds] = useState([]);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [showCustomers, setShowCustomers] = useState(false);
-
-  /* ---------------------------------------------
-     DIAS JÁ UTILIZADOS POR OUTRAS PROGRAMAÇÕES
-     --------------------------------------------- */
 
   const getUsedDays = (currentId) =>
     normalizedSchedule
-      .filter((schedule) => schedule.id !== currentId)
-      .flatMap((schedule) =>
-        Array.isArray(schedule.days) ? schedule.days : []
-      );
-
-  /* ---------------------------------------------
-     SELEÇÃO DE DIAS
-     --------------------------------------------- */
+      .filter((s) => s.id !== currentId)
+      .flatMap((s) => (Array.isArray(s.days) ? s.days : []));
 
   const toggleDay = (day) => {
     setEditDays((current) => {
       const days = Array.isArray(current) ? current : [];
-
-      if (days.includes(day)) {
-        return days.filter((item) => item !== day);
-      }
-
-      return [...days, day].sort(
-        (a, b) =>
-          WEEK_DAYS.findIndex((d) => d.value === a) -
-          WEEK_DAYS.findIndex((d) => d.value === b)
-      );
+      if (days.includes(day)) return days.filter((item) => item !== day);
+      return [...days, day];
     });
   };
-
-  /* ---------------------------------------------
-     EDIÇÃO
-     --------------------------------------------- */
 
   const startEdit = (schedule) => {
     setEditingId(schedule.id);
@@ -156,11 +180,8 @@ function WhatsApp({
     setEditTime(schedule.time || "10:00");
     setEditText(schedule.text || DEFAULT_MESSAGE);
     setEditSendToAll(schedule.sendToAll !== false);
-    setEditCustomerIds(
-      Array.isArray(schedule.customerIds) ? [...schedule.customerIds] : []
-    );
+    setEditCustomerIds(Array.isArray(schedule.customerIds) ? [...schedule.customerIds] : []);
     setCustomerSearch("");
-    setShowCustomers(false);
   };
 
   const cancelEdit = () => {
@@ -171,7 +192,6 @@ function WhatsApp({
     setEditSendToAll(true);
     setEditCustomerIds([]);
     setCustomerSearch("");
-    setShowCustomers(false);
   };
 
   const saveEdit = (id) => {
@@ -179,42 +199,34 @@ function WhatsApp({
       alert("Selecione pelo menos um dia da semana.");
       return;
     }
-
     if (!editText.trim()) {
       alert("Digite uma mensagem antes de salvar.");
       return;
     }
-
     if (!editSendToAll && editCustomerIds.length === 0) {
-      alert("Selecione pelo menos um cliente.");
+      alert("Selecione pelo menos um cliente para o envio.");
       return;
     }
 
-    setWaSchedule(
-      normalizedSchedule.map((schedule) =>
-        schedule.id === id
-          ? {
-              ...schedule,
-              days: [...editDays],
-              time: editTime,
-              text: editText,
-              sendToAll: editSendToAll,
-              customerIds: editSendToAll ? [] : [...editCustomerIds]
-            }
-          : schedule
-      )
+    const updated = normalizedSchedule.map((schedule) =>
+      schedule.id === id
+        ? {
+            ...schedule,
+            days: [...editDays],
+            time: editTime,
+            text: editText,
+            sendToAll: editSendToAll,
+            customerIds: editSendToAll ? [] : [...editCustomerIds]
+          }
+        : schedule
     );
 
+    persistSchedules(updated);
     cancelEdit();
   };
 
-  /* ---------------------------------------------
-     ATIVAR / PAUSAR
-     --------------------------------------------- */
-
   const toggle = (id) => {
     const schedule = normalizedSchedule.find((item) => item.id === id);
-
     if (!schedule) return;
 
     if (!schedule.enabled && !schedule.days?.length) {
@@ -222,114 +234,81 @@ function WhatsApp({
       return;
     }
 
-    if (!schedule.enabled) {
-      const usedDays = getUsedDays(id);
-      const conflict = schedule.days.some((day) => usedDays.includes(day));
-
-      if (conflict) {
-        alert(
-          "Um ou mais dias desta programação já estão sendo utilizados por outra mensagem."
-        );
-        return;
-      }
-    }
-
-    setWaSchedule(
-      normalizedSchedule.map((item) =>
-        item.id === id ? { ...item, enabled: !item.enabled } : item
-      )
+    const updated = normalizedSchedule.map((item) =>
+      item.id === id ? { ...item, enabled: !item.enabled } : item
     );
+    persistSchedules(updated);
   };
-
-  /* ---------------------------------------------
-     CLIENTES
-     --------------------------------------------- */
 
   const toggleCustomer = (customerId) => {
     setEditCustomerIds((current) =>
-      current.includes(customerId)
-        ? current.filter((id) => id !== customerId)
-        : [...current, customerId]
+      current.includes(customerId) ? current.filter((id) => id !== customerId) : [...current, customerId]
     );
-  };
-
-  const selectAllCustomers = () => {
-    setEditSendToAll(true);
-    setEditCustomerIds([]);
-  };
-
-  const selectSpecificCustomers = () => {
-    setEditSendToAll(false);
   };
 
   const filteredCustomers = useMemo(() => {
     const search = customerSearch.toLowerCase().trim();
-
     if (!search) return customers;
-
-    return customers.filter((customer) => {
-      const name = String(customer.name || "").toLowerCase();
-      const phone = String(customer.phone || "").toLowerCase();
+    return customers.filter((c) => {
+      const name = String(c.name || "").toLowerCase();
+      const phone = String(c.phone || "").toLowerCase();
       return name.includes(search) || phone.includes(search);
     });
   }, [customers, customerSearch]);
 
-  /* ---------------------------------------------
-     RÓTULO DOS DIAS
-     --------------------------------------------- */
-
   const getDaysLabel = (days) => {
-    if (!Array.isArray(days) || days.length === 0) {
-      return "Nenhum dia selecionado";
-    }
-
-    return days
-      .map(
-        (day) =>
-          WEEK_DAYS.find((item) => item.value === day)?.label || day
-      )
-      .join(", ");
+    if (!Array.isArray(days) || days.length === 0) return "Nenhum dia selecionado";
+    return days.map((d) => WEEK_DAYS.find((item) => item.value === d)?.label || d).join(", ");
   };
-
-  /* ---------------------------------------------
-     RENDERIZAÇÃO
-     --------------------------------------------- */
 
   return (
     <div>
       <SectionTitle
         title="Integração com WhatsApp"
-        sub="Mensagens automáticas — até três programações por semana"
+        sub="Configure sua API individual e gerencie disparos automáticos"
         subtext={subtext}
       />
 
-      <div
-        style={{
-          background: `${accent}12`,
-          border: `1px solid ${accent}40`,
-          borderRadius: 10,
-          padding: 14,
-          fontSize: 12.5,
-          color: text,
-          marginBottom: 16
-        }}
-      >
-        <strong>Programação de mensagens</strong>
-
-        <div style={{ marginTop: 5, lineHeight: 1.5 }}>
-          Você pode criar até três programações. Os dias escolhidos em uma
-          programação não ficam disponíveis nas outras.
-          <br />
-          O envio real dependerá da integração com a API oficial do WhatsApp
-          Business.
-          <br />
-          A validade atual do cashback é de{" "}
-          <strong>{cashbackValidityDays}</strong> dias.
+      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <Key size={16} color={accent} />
+          Credenciais da API de WhatsApp da sua Conta
         </div>
+        <form onSubmit={saveUserConfig} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <SLabel subtext={subtext}>URL DA API (ENDPOINT DE ENVIO)</SLabel>
+            <input
+              type="text"
+              placeholder="Ex: https://sua-api.com/message/sendText/instancia"
+              value={apiUrlInput}
+              onChange={(e) => setApiUrlInput(e.target.value)}
+              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }}
+            />
+          </div>
+          <div>
+            <SLabel subtext={subtext}>API KEY (CHAVE DE AUTENTICAÇÃO)</SLabel>
+            <input
+              type="password"
+              placeholder="Sua chave secreta da API"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+            <button
+              type="submit"
+              style={{ background: accent, color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+            >
+              Salvar Credenciais
+            </button>
+            {configSaved && <span style={{ fontSize: 12, color: SUCCESS, fontWeight: 600 }}>Salvo com sucesso!</span>}
+          </div>
+        </form>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {normalizedSchedule.map((schedule, index) => {
+        {normalizedSchedule.map((schedule) => {
           const usedDays = getUsedDays(schedule.id);
 
           return (
@@ -342,7 +321,6 @@ function WhatsApp({
                 overflow: "hidden"
               }}
             >
-              {/* CABEÇALHO */}
               <div
                 style={{
                   display: "flex",
@@ -354,646 +332,199 @@ function WhatsApp({
                 }}
               >
                 <div>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: 14,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap"
-                    }}
-                  >
+                  <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
                     <MessageCircle size={16} color={accent} />
                     {schedule.label}
                     <Pill color={schedule.enabled ? SUCCESS : subtext}>
                       {schedule.enabled ? "Ativo" : "Pausado"}
                     </Pill>
                   </div>
-
-                  <div
-                    style={{ fontSize: 11, color: subtext, marginTop: 4 }}
-                  >
-                    Programação {index + 1} de 3
-                  </div>
                 </div>
 
-                <label
-                  style={{
-                    position: "relative",
-                    display: "inline-block",
-                    width: 38,
-                    height: 21,
-                    cursor: "pointer",
-                    flexShrink: 0
-                  }}
-                >
+                <label style={{ position: "relative", display: "inline-block", width: 38, height: 21, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={schedule.enabled}
                     onChange={() => toggle(schedule.id)}
                     style={{ opacity: 0, width: 0, height: 0 }}
                   />
-
-                  <span
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: schedule.enabled ? accent : "#ccc",
-                      borderRadius: 20,
-                      transition: ".2s"
-                    }}
-                  />
-
-                  <span
-                    style={{
-                      position: "absolute",
-                      height: 15,
-                      width: 15,
-                      left: schedule.enabled ? 20 : 3,
-                      bottom: 3,
-                      background: "#fff",
-                      borderRadius: "50%",
-                      transition: ".2s"
-                    }}
-                  />
+                  <span style={{ position: "absolute", inset: 0, background: schedule.enabled ? accent : "#ccc", borderRadius: 20 }} />
+                  <span style={{ position: "absolute", height: 15, width: 15, left: schedule.enabled ? 20 : 3, bottom: 3, background: "#fff", borderRadius: "50%" }} />
                 </label>
               </div>
 
-              {/* CONTEÚDO */}
               <div style={{ padding: 14 }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
-                    gap: 10,
-                    marginBottom: 12
-                  }}
-                >
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
                   <div>
                     <SLabel subtext={subtext}>DIAS</SLabel>
-                    <div
-                      style={{
-                        marginTop: 5,
-                        fontSize: 12.5,
-                        fontWeight: 600
-                      }}
-                    >
-                      {getDaysLabel(schedule.days)}
-                    </div>
+                    <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 600 }}>{getDaysLabel(schedule.days)}</div>
                   </div>
-
                   <div>
                     <SLabel subtext={subtext}>HORÁRIO</SLabel>
-                    <div
-                      style={{
-                        marginTop: 5,
-                        fontSize: 12.5,
-                        fontWeight: 600
-                      }}
-                    >
-                      {schedule.time || "10:00"}
-                    </div>
+                    <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 600 }}>{schedule.time || "10:00"}</div>
                   </div>
-
                   <div>
                     <SLabel subtext={subtext}>CLIENTES</SLabel>
-                    <div
-                      style={{
-                        marginTop: 5,
-                        fontSize: 12.5,
-                        fontWeight: 600
-                      }}
-                    >
-                      {schedule.sendToAll
-                        ? `Todos (${customers.length})`
-                        : `${schedule.customerIds?.length || 0} selecionado(s)`}
+                    <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 600 }}>
+                      {schedule.sendToAll ? `Todos (${customers.length})` : `${schedule.customerIds?.length || 0} selecionado(s)`}
                     </div>
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    background: `${accent}08`,
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 11.5,
-                    color: subtext,
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.5,
-                    marginBottom: 10
-                  }}
-                >
+                <div style={{ background: `${accent}08`, borderRadius: 8, padding: 10, fontSize: 11.5, color: subtext, whiteSpace: "pre-wrap", marginBottom: 10 }}>
                   {schedule.text || "Nenhuma mensagem configurada."}
                 </div>
 
                 <button
                   onClick={() => startEdit(schedule)}
-                  style={{
-                    background: accent,
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 7,
-                    padding: "7px 12px",
-                    cursor: "pointer",
-                    fontWeight: 700,
-                    fontSize: 11.5
-                  }}
+                  style={{ background: accent, color: "#fff", border: "none", borderRadius: 7, padding: "7px 12px", cursor: "pointer", fontWeight: 700, fontSize: 11.5 }}
                 >
-                  <Edit2
-                    size={13}
-                    style={{ verticalAlign: "middle", marginRight: 5 }}
-                  />
+                  <Edit2 size={13} style={{ verticalAlign: "middle", marginRight: 5 }} />
                   Editar programação
                 </button>
 
-                {/* EDITOR */}
                 {editingId === schedule.id && (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      paddingTop: 14,
-                      borderTop: `1px solid ${border}`
-                    }}
-                  >
-                    {/* DIAS */}
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${border}` }}>
                     <div style={{ marginBottom: 12 }}>
                       <SLabel subtext={subtext}>DIAS DA SEMANA</SLabel>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: 7,
-                          marginTop: 6
-                        }}
-                      >
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7, marginTop: 6 }}>
                         {WEEK_DAYS.map((day) => {
                           const unavailable = usedDays.includes(day.value);
                           const selected = editDays.includes(day.value);
-
                           return (
                             <button
                               key={day.value}
                               type="button"
                               disabled={unavailable}
-                              onClick={() => {
-                                if (unavailable) return;
-                                toggleDay(day.value);
-                              }}
+                              onClick={() => !unavailable && toggleDay(day.value)}
                               style={{
-                                background: selected
-                                  ? `${accent}18`
-                                  : unavailable
-                                  ? `${border}50`
-                                  : "transparent",
-                                color: selected
-                                  ? accent
-                                  : unavailable
-                                  ? subtext
-                                  : text,
-                                border: `1px solid ${
-                                  selected ? accent : border
-                                }`,
+                                background: selected ? `${accent}18` : unavailable ? `${border}50` : "transparent",
+                                color: selected ? accent : unavailable ? subtext : text,
+                                border: `1px solid ${selected ? accent : border}`,
                                 borderRadius: 7,
                                 padding: "8px 10px",
-                                cursor: unavailable
-                                  ? "not-allowed"
-                                  : "pointer",
+                                cursor: unavailable ? "not-allowed" : "pointer",
                                 fontSize: 11.5,
-                                fontWeight: selected ? 700 : 500,
-                                opacity: unavailable ? 0.45 : 1,
-                                textAlign: "left"
+                                textAlign: "left",
+                                opacity: unavailable ? 0.45 : 1
                               }}
                             >
-                              {selected && (
-                                <Check
-                                  size={13}
-                                  style={{
-                                    verticalAlign: "middle",
-                                    marginRight: 5
-                                  }}
-                                />
-                              )}
                               {day.label}
                             </button>
                           );
                         })}
                       </div>
-
-                      <div
-                        style={{
-                          fontSize: 10.5,
-                          color: subtext,
-                          marginTop: 5
-                        }}
-                      >
-                        Os dias usados pelas outras programações ficam
-                        desabilitados.
-                      </div>
                     </div>
 
-                    {/* HORÁRIO */}
                     <div style={{ marginBottom: 12 }}>
                       <SLabel subtext={subtext}>HORÁRIO DO ENVIO</SLabel>
-
                       <input
                         type="time"
                         value={editTime}
                         onChange={(e) => setEditTime(e.target.value)}
-                        style={{
-                          ...inputStyle(border, text),
-                          width: "100%",
-                          marginTop: 5
-                        }}
+                        style={{ ...inputStyle(border, text), width: "100%", marginTop: 5 }}
                       />
                     </div>
 
-                    {/* CLIENTES */}
+                    {/* SELEÇÃO DE PÚBLICO (TODOS OU ESPECÍFICOS) */}
                     <div style={{ marginBottom: 12 }}>
-                      <SLabel subtext={subtext}>CLIENTES QUE RECEBERÃO</SLabel>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          marginTop: 6,
-                          flexWrap: "wrap"
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={selectAllCustomers}
-                          style={{
-                            background: editSendToAll
-                              ? `${accent}18`
-                              : "transparent",
-                            color: editSendToAll ? accent : text,
-                            border: `1px solid ${
-                              editSendToAll ? accent : border
-                            }`,
-                            borderRadius: 7,
-                            padding: "7px 10px",
-                            cursor: "pointer",
-                            fontSize: 11.5,
-                            fontWeight: 700
-                          }}
-                        >
-                          <Users
-                            size={13}
-                            style={{
-                              verticalAlign: "middle",
-                              marginRight: 5
-                            }}
+                      <SLabel subtext={subtext}>DESTINATÁRIOS</SLabel>
+                      <div style={{ display: "flex", gap: 15, marginTop: 6, marginBottom: 8 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", fontWeight: editSendToAll ? 600 : 400 }}>
+                          <input
+                            type="radio"
+                            name={`sendToAll-${schedule.id}`}
+                            checked={editSendToAll}
+                            onChange={() => setEditSendToAll(true)}
                           />
-                          Todos os clientes
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={selectSpecificCustomers}
-                          style={{
-                            background: !editSendToAll
-                              ? `${accent}18`
-                              : "transparent",
-                            color: !editSendToAll ? accent : text,
-                            border: `1px solid ${
-                              !editSendToAll ? accent : border
-                            }`,
-                            borderRadius: 7,
-                            padding: "7px 10px",
-                            cursor: "pointer",
-                            fontSize: 11.5,
-                            fontWeight: 700
-                          }}
-                        >
-                          <User
-                            size={13}
-                            style={{
-                              verticalAlign: "middle",
-                              marginRight: 5
-                            }}
+                          Enviar para todos os clientes ({customers.length})
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", fontWeight: !editSendToAll ? 600 : 400 }}>
+                          <input
+                            type="radio"
+                            name={`sendToAll-${schedule.id}`}
+                            checked={!editSendToAll}
+                            onChange={() => setEditSendToAll(false)}
                           />
-                          Escolher clientes
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => onGoCustomers?.()}
-                          style={{
-                            background: "transparent",
-                            color: accent,
-                            border: `1px solid ${accent}`,
-                            borderRadius: 7,
-                            padding: "7px 10px",
-                            cursor: "pointer",
-                            fontSize: 11.5,
-                            fontWeight: 700
-                          }}
-                        >
-                          <Plus
-                            size={13}
-                            style={{
-                              verticalAlign: "middle",
-                              marginRight: 5
-                            }}
-                          />
-                          Cadastrar cliente
-                        </button>
+                          Selecionar clientes específicos
+                        </label>
                       </div>
 
-                      {editSendToAll && (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            padding: 10,
-                            background: `${SUCCESS}10`,
-                            border: `1px solid ${SUCCESS}35`,
-                            borderRadius: 8,
-                            fontSize: 11.5,
-                            color: subtext
-                          }}
-                        >
-                          <Check
-                            size={14}
-                            color={SUCCESS}
-                            style={{
-                              verticalAlign: "middle",
-                              marginRight: 5
-                            }}
-                          />
-                          A mensagem será enviada para todos os clientes
-                          cadastrados.
-                          <br />
-                          Total de clientes:{" "}
-                          <strong>{customers.length}</strong>
-                        </div>
-                      )}
-
                       {!editSendToAll && (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            border: `1px solid ${border}`,
-                            borderRadius: 9,
-                            padding: 10
-                          }}
-                        >
-                          <div style={{ display: "flex", gap: 7 }}>
-                            <div style={{ position: "relative", flex: 1 }}>
-                              <Search
-                                size={14}
-                                color={subtext}
-                                style={{
-                                  position: "absolute",
-                                  left: 9,
-                                  top: 10
-                                }}
-                              />
-
-                              <input
-                                value={customerSearch}
-                                onChange={(e) =>
-                                  setCustomerSearch(e.target.value)
-                                }
-                                placeholder="Pesquisar cliente..."
-                                style={{
-                                  ...inputStyle(border, text),
-                                  width: "100%",
-                                  paddingLeft: 30
-                                }}
-                              />
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => setShowCustomers(!showCustomers)}
-                              style={{
-                                background: accent,
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: 7,
-                                padding: "0 11px",
-                                cursor: "pointer"
-                              }}
-                            >
-                              {showCustomers ? "Fechar" : "Selecionar"}
-                            </button>
+                        <div style={{ border: `1px solid ${border}`, borderRadius: 8, padding: 10, background: `${card}aa` }}>
+                          <div style={{ position: "relative", marginBottom: 8 }}>
+                            <Search size={14} color={subtext} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
+                            <input
+                              type="text"
+                              placeholder="Buscar cliente por nome ou telefone..."
+                              value={customerSearch}
+                              onChange={(e) => setCustomerSearch(e.target.value)}
+                              style={{ ...inputStyle(border, text), width: "100%", paddingLeft: 30, fontSize: 11.5 }}
+                            />
                           </div>
 
-                          {showCustomers && (
-                            <div
-                              style={{
-                                marginTop: 9,
-                                maxHeight: 250,
-                                overflowY: "auto",
-                                borderTop: `1px solid ${border}`
-                              }}
-                            >
-                              {filteredCustomers.length === 0 ? (
-                                <div
-                                  style={{
-                                    padding: 15,
-                                    textAlign: "center",
-                                    color: subtext,
-                                    fontSize: 11.5
-                                  }}
-                                >
-                                  Nenhum cliente encontrado.
-                                  <br />
-                                  <button
-                                    type="button"
-                                    onClick={() => onGoCustomers?.()}
+                          <div style={{ maxHeight: 150, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                            {filteredCustomers.length === 0 ? (
+                              <div style={{ fontSize: 11.5, color: subtext, textAlign: "center", padding: 10 }}>Nenhum cliente encontrado.</div>
+                            ) : (
+                              filteredCustomers.map((c) => {
+                                const isSelected = editCustomerIds.includes(c.id);
+                                return (
+                                  <div
+                                    key={c.id}
+                                    onClick={() => toggleCustomer(c.id)}
                                     style={{
-                                      marginTop: 8,
-                                      background: "transparent",
-                                      color: accent,
-                                      border: "none",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      padding: "6px 8px",
+                                      borderRadius: 6,
+                                      background: isSelected ? `${accent}15` : "transparent",
                                       cursor: "pointer",
-                                      textDecoration: "underline"
+                                      fontSize: 11.5
                                     }}
                                   >
-                                    Cadastrar novo cliente
-                                  </button>
-                                </div>
-                              ) : (
-                                filteredCustomers.map((customer) => {
-                                  const selected = editCustomerIds.includes(
-                                    customer.id
-                                  );
-
-                                  return (
-                                    <label
-                                      key={customer.id}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 9,
-                                        padding: "9px 5px",
-                                        borderBottom: `1px solid ${border}`,
-                                        cursor: "pointer"
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={selected}
-                                        onChange={() =>
-                                          toggleCustomer(customer.id)
-                                        }
-                                      />
-
-                                      <div style={{ flex: 1 }}>
-                                        <div
-                                          style={{
-                                            fontWeight: 600,
-                                            fontSize: 12
-                                          }}
-                                        >
-                                          {customer.name}
-                                        </div>
-
-                                        <div
-                                          style={{
-                                            color: subtext,
-                                            fontSize: 10.5,
-                                            marginTop: 2
-                                          }}
-                                        >
-                                          {customer.phone ||
-                                            "Telefone não informado"}
-                                        </div>
-                                      </div>
-
-                                      {selected && (
-                                        <Check size={14} color={accent} />
-                                      )}
-                                    </label>
-                                  );
-                                })
-                              )}
-                            </div>
-                          )}
-
-                          <div
-                            style={{
-                              marginTop: 8,
-                              fontSize: 10.5,
-                              color: subtext
-                            }}
-                          >
-                            {editCustomerIds.length} cliente(s)
-                            selecionado(s).
+                                    <div>
+                                      <span style={{ fontWeight: 600 }}>{c.name}</span>
+                                      <span style={{ color: subtext, marginLeft: 8 }}>{c.phone}</span>
+                                    </div>
+                                    {isSelected && <Check size={14} color={accent} />}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, color: subtext, marginTop: 6 }}>
+                            {editCustomerIds.length} cliente(s) selecionado(s).
                           </div>
                         </div>
                       )}
                     </div>
 
-                    {/* MENSAGEM */}
                     <div style={{ marginBottom: 12 }}>
-                      <SLabel subtext={subtext}>MENSAGEM</SLabel>
-
+                      <SLabel subtext={subtext}>MENSAGEM (Variáveis: {"{nome}"}, {"{saldo}"})</SLabel>
                       <textarea
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
-                        rows={7}
-                        placeholder="Digite a mensagem que será enviada..."
-                        style={{
-                          ...inputStyle(border, text),
-                          width: "100%",
-                          marginTop: 5,
-                          fontFamily: FONT_BODY,
-                          resize: "vertical",
-                          lineHeight: 1.5
-                        }}
+                        rows={5}
+                        style={{ ...inputStyle(border, text), width: "100%", marginTop: 5, fontFamily: FONT_BODY }}
                       />
-
-                      <div
-                        style={{
-                          marginTop: 5,
-                          fontSize: 10.5,
-                          color: subtext
-                        }}
-                      >
-                        Você pode utilizar:
-                        <br />
-                        <strong>{"{nome}"}</strong> — nome do cliente
-                        <br />
-                        <strong>{"{saldo}"}</strong> — saldo de cashback
-                        <br />
-                        <strong>{"{produtos}"}</strong> — produtos da última
-                        compra
-                      </div>
                     </div>
 
-                    {/* RESUMO */}
-                    <div
-                      style={{
-                        background: `${accent}08`,
-                        borderRadius: 8,
-                        padding: 10,
-                        marginBottom: 12,
-                        fontSize: 11.5,
-                        color: subtext
-                      }}
-                    >
-                      <strong style={{ color: text }}>
-                        Resumo da programação
-                      </strong>
-                      <br />
-                      Dias: <strong>{getDaysLabel(editDays)}</strong>
-                      <br />
-                      Horário: <strong>{editTime}</strong>
-                      <br />
-                      Destinatários:{" "}
-                      <strong>
-                        {editSendToAll
-                          ? `Todos os ${customers.length} clientes`
-                          : `${editCustomerIds.length} cliente(s)`}
-                      </strong>
-                    </div>
-
-                    {/* BOTÕES */}
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 8 }}>
                       <button
                         type="button"
                         onClick={() => saveEdit(schedule.id)}
-                        style={{
-                          background: accent,
-                          border: "none",
-                          borderRadius: 7,
-                          padding: "8px 13px",
-                          color: "#fff",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          fontSize: 11.5
-                        }}
+                        style={{ background: accent, border: "none", borderRadius: 7, padding: "8px 13px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 11.5 }}
                       >
-                        <Save
-                          size={13}
-                          style={{ verticalAlign: "middle", marginRight: 5 }}
-                        />
-                        Salvar programação
+                        <Save size={13} style={{ verticalAlign: "middle", marginRight: 5 }} /> Salvar
                       </button>
-
                       <button
                         type="button"
                         onClick={cancelEdit}
-                        style={{
-                          background: "transparent",
-                          border: `1px solid ${border}`,
-                          borderRadius: 7,
-                          padding: "8px 13px",
-                          color: text,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          fontSize: 11.5
-                        }}
+                        style={{ background: "transparent", border: `1px solid ${border}`, borderRadius: 7, padding: "8px 13px", color: text, fontWeight: 700, cursor: "pointer", fontSize: 11.5 }}
                       >
-                        <X
-                          size={13}
-                          style={{ verticalAlign: "middle", marginRight: 5 }}
-                        />
-                        Cancelar
+                        <X size={13} style={{ verticalAlign: "middle", marginRight: 5 }} /> Cancelar
                       </button>
                     </div>
                   </div>
@@ -1002,36 +533,6 @@ function WhatsApp({
             </div>
           );
         })}
-      </div>
-
-      {/* INFORMAÇÕES FINAIS */}
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: `1px solid ${border}`,
-          borderRadius: 10,
-          fontSize: 11,
-          color: subtext,
-          lineHeight: 1.5
-        }}
-      >
-        <strong style={{ color: text }}>Como funciona:</strong>
-        <br />
-        1. Escolha um ou mais dias para cada programação.
-        <br />
-        2. Um dia escolhido não fica disponível nas outras programações.
-        <br />
-        3. Defina o horário.
-        <br />
-        4. Escolha todos os clientes ou somente alguns.
-        <br />
-        5. Escreva ou edite a mensagem.
-        <br />
-        6. Salve a programação.
-        <br />
-        7. O sistema poderá utilizar essas configurações posteriormente para
-        realizar os disparos pelo WhatsApp.
       </div>
     </div>
   );

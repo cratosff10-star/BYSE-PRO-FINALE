@@ -10,129 +10,11 @@ const CAT_COLORS = {
   "Saúde e bem-estar": { main: "#059669", dark: "#064E3B", abbr: "S&B" }
 };
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-import {
-  Users,
-  Package,
-  ShoppingCart,
-  BarChart3,
-  Store,
-  MessageCircle,
-  Gift,
-  Printer,
-  Plus,
-  Search,
-  Moon,
-  Sun,
-  Trash2,
-  X,
-  ChevronRight,
-  ChevronLeft,
-  Award,
-  Percent,
-  Eye,
-  EyeOff,
-  Edit2,
-  Check,
-  User,
-  Lock,
-  Menu,
-  Bell,
-  Clipboard,
-  MoreVertical,
-  Tag,
-  Heart,
-  ScanLine,
-  List,
-  History,
-  LayoutGrid,
-  TrendingUp,
-  Share2,
-  Calculator,
-  CreditCard,
-  Truck,
-  Video,
-  Music,
-  Type,
-  Mail,
-  Wallet,
-  Banknote,
-  Save
-} from "lucide-react";
-
-import {
-  FONT_BODY,
-  FONT_DISPLAY,
-  SUCCESS,
-  DANGER,
-  CHANNELS,
-  GENDERS,
-  FULFILLMENTS,
-  MONTH_NAMES,
-  MONTH_SHORT,
-  WEEKDAY_LABELS,
-  WEEKDAY_SHORT,
-  seedCustomers,
-  seedProducts,
-  seedSellers,
-  paymentMethods,
-  HOUR_WEIGHTS,
-  DOW_WEIGHTS,
-  HOUR_SLOTS,
-  CHANNEL_WEIGHTS,
-  GENDER_WEIGHTS,
-  FULFILL_WEIGHTS,
-  PRESET_COLORS,
-  seedSales,
-  allSeedSales,
-  seedAdEntries,
-  seedFiados
-} from "../data/constants";
-
-import {
-  money,
-  formatDateShort,
-  formatDateBadge,
-  formatDateLong,
-  inPeriod,
-  sameOrBefore,
-  sendWhatsAppMessage,
-  sendSMS,
-  fiadoDate,
-  inputStyle,
-  lbl,
-  ghostBtn,
-  hexAlpha
-} from "../utils/helpers";
-
-import {
-  SectionTitle,
-  StatCard,
-  FinanceRow,
-  HBar,
-  WaveChart,
-  Pill,
-  SLabel,
-  PeriodHeader,
-  PeriodModal,
-  SingleDatePicker,
-  MenuGridScreen,
-  LogoMark,
-  VipWelcome
-} from "../components/common";
-
-import type {
-  Product,
-  Customer,
-  Seller,
-  Sale,
-  StockLocation,
-  AdEntry,
-  WaScheduleEntry,
-  WelcomeConfig
-} from "../types";
-
+import React, { useState, useEffect } from "react";
+import { Plus, Trash2, Edit2 } from "lucide-react";
+import { FONT_BODY } from "../data/constants";
+import { money, inputStyle, ghostBtn } from "../utils/helpers";
+import { SectionTitle, HBar } from "../components/common";
 
 function Estoque({
   products,
@@ -149,6 +31,31 @@ function Estoque({
   const [newLocName, setNewLocName] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  const API_URL = "http://localhost:3333";
+
+  // 🔄 Carrega produtos e locais do backend ao abrir a tela
+  useEffect(() => {
+    const fetchEstoqueData = async () => {
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+      const headers = { "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" };
+
+      try {
+        const [resProd, resLoc] = await Promise.all([
+          fetch(`${API_URL}/api/produtos`, { headers }),
+          fetch(`${API_URL}/api/locais`, { headers })
+        ]);
+
+        if (resProd.ok) setProducts(await resProd.json());
+        if (resLoc.ok) setStockLocations(await resLoc.json());
+      } catch (error) {
+        console.error("Erro ao buscar dados de estoque:", error);
+      }
+    };
+
+    fetchEstoqueData();
+  }, []);
 
   const blankForm = {
     name: "",
@@ -169,18 +76,40 @@ function Estoque({
 
   const [form, setForm] = useState(blankForm);
 
-  const renameLoc = (id, name) =>
-    setStockLocations(
-      stockLocations.map((l) => (l.id === id ? { ...l, name } : l))
-    );
+  const renameLoc = async (id, name) => {
+    const updatedLocs = stockLocations.map((l) => (l.id === id ? { ...l, name } : l));
+    setStockLocations(updatedLocs);
 
-  const addLoc = () => {
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    await fetch(`${API_URL}/api/locais`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" },
+      body: JSON.stringify({ id, name })
+    });
+  };
+
+  const addLoc = async () => {
     if (!newLocName.trim()) return;
-    setStockLocations([
-      ...stockLocations,
-      { id: "loc" + Date.now(), name: newLocName.trim() }
-    ]);
-    setNewLocName("");
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    try {
+      const response = await fetch(`${API_URL}/api/locais`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" },
+        body: JSON.stringify({ name: newLocName.trim() })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStockLocations(data);
+        setNewLocName("");
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar local:", error);
+    }
   };
 
   const startEdit = (p) => {
@@ -228,7 +157,8 @@ function Estoque({
     return (v / c) * 100;
   };
 
-  const saveProduct = () => {
+  // 💾 Salva o produto via backend
+  const saveProduct = async () => {
     if (!form.name || !form.price) return;
     const built = {
       id: editingId || "p" + Date.now(),
@@ -255,16 +185,50 @@ function Estoque({
           )
         : {}
     };
-    setProducts(
-      editingId
-        ? products.map((p) => (p.id === editingId ? built : p))
-        : [...products, built]
-    );
-    cancelForm();
+
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    try {
+      const response = await fetch(`${API_URL}/api/produtos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" },
+        body: JSON.stringify(built)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const savedProd = data.produto || built;
+        setProducts(
+          editingId
+            ? products.map((p) => (p.id === editingId ? savedProd : p))
+            : [...products, savedProd]
+        );
+        cancelForm();
+      }
+    } catch (error) {
+      console.error("Erro ao salvar produto:", error);
+    }
   };
 
-  const removeProduct = (id) =>
-    setProducts(products.filter((p) => p.id !== id));
+  const removeProduct = async (id) => {
+    if (!confirm("Deseja realmente remover este produto?")) return;
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+    try {
+      const response = await fetch(`${API_URL}/api/produtos/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" }
+      });
+
+      if (response.ok) {
+        setProducts(products.filter((p) => p.id !== id));
+      }
+    } catch (error) {
+      console.error("Erro ao remover produto:", error);
+    }
+  };
 
   const gridCols = `2fr 1fr 0.7fr 0.7fr ${stockLocations
     .map(() => "0.9fr")
@@ -488,41 +452,6 @@ function Estoque({
                   : "% do custo (automático)"}
               </div>
             </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              marginBottom: 10,
-              padding: 10,
-              background: `${accent}0c`,
-              borderRadius: 8
-            }}
-          >
-            <input
-              placeholder="Valor VIP à vista (R$)"
-              type="number"
-              value={form.vipPrice}
-              onChange={(e) =>
-                setForm({ ...form, vipPrice: e.target.value })
-              }
-              style={inputStyle(border, text)}
-            />
-            <input
-              placeholder={`3x sem juros — cada (padrão: ${
-                form.vipPrice
-                  ? money(parseFloat(form.vipPrice) / 3)
-                  : "—"
-              })`}
-              type="number"
-              value={form.vipPrice3x}
-              onChange={(e) =>
-                setForm({ ...form, vipPrice3x: e.target.value })
-              }
-              style={inputStyle(border, text)}
-            />
           </div>
 
           <textarea
@@ -779,7 +708,6 @@ function Estoque({
     </div>
   );
 }
-
 
 function catColor(cat) {
   return (
