@@ -32,7 +32,8 @@ function Estoque({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  const API_URL = "http://localhost:3333";
+  // Utiliza a variável de ambiente do Railway configurada na Vercel, com fallback para o ambiente local
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
   // 🔄 Carrega produtos e locais do backend ao abrir a tela
   useEffect(() => {
