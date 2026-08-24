@@ -328,6 +328,77 @@ app.delete('/api/produtos/:id', authMiddleware, async (req, res) => {
     }
 });
 
+/**
+ * Rotas de Vendas (PDV)
+ */
+app.get('/api/sales', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query(
+            'SELECT * FROM sales WHERE user_id = $1 ORDER BY date DESC',
+            [userId]
+        ).catch(() => ({ rows: [] }));
+
+        const salesFormatted = result.rows.map(s => ({
+            id: s.id,
+            customerId: s.customer_id,
+            customer_name: s.customer_name,
+            seller: s.seller,
+            payment_method: s.payment_method,
+            discount: Number(s.discount),
+            subtotal: Number(s.subtotal),
+            total: Number(s.total),
+            gender: s.gender,
+            sales_channel: s.sales_channel,
+            delivery_type: s.delivery_type,
+            items: typeof s.items === 'string' ? JSON.parse(s.items || '[]') : (s.items || []),
+            date: s.date
+        }));
+
+        return res.status(200).json(salesFormatted);
+    } catch (error) {
+        console.error('Erro ao buscar vendas:', error);
+        return res.status(200).json([]);
+    }
+});
+
+app.post('/api/sales', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const s = req.body;
+        const saleId = s.id || `pur_${Date.now()}`;
+
+        await pool.query(`
+            INSERT INTO sales (id, user_id, customer_id, customer_name, seller, payment_method, discount, subtotal, total, gender, sales_channel, delivery_type, items, date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            ON CONFLICT (id) DO UPDATE SET
+                customer_id = $3, customer_name = $4, seller = $5, payment_method = $6,
+                discount = $7, subtotal = $8, total = $9, gender = $10, sales_channel = $11, 
+                delivery_type = $12, items = $13, date = $14
+        `, [
+            saleId,
+            userId,
+            s.customerId || null,
+            s.customer_name || 'Cliente Geral',
+            s.seller || '',
+            s.payment_method || 'Pix',
+            s.discount || 0,
+            s.subtotal || 0,
+            s.total || 0,
+            s.gender || 'Prefiro não informar',
+            s.sales_channel || 'Loja física',
+            s.delivery_type || 'Retirada',
+            JSON.stringify(s.items || []),
+            s.date || new Date().toISOString()
+        ]);
+
+        return res.status(201).json({ message: 'Venda salva com sucesso!', saleId });
+    } catch (error) {
+        console.error('Erro ao salvar venda:', error);
+        return res.status(500).json({ error: 'Erro interno ao salvar a venda no banco.' });
+    }
+});
+
 app.get('/api/locais', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;

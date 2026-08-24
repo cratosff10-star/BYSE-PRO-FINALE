@@ -70,7 +70,25 @@ export async function initDb() {
       UNIQUE(user_id, schedule_index)
     );
 
-    -- Garante que todas as colunas de whatsapp_schedules existam caso a tabela já tenha sido criada antes
+    -- ADIÇÃO DA TABELA DE VENDAS
+    CREATE TABLE IF NOT EXISTS sales (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255) REFERENCES users(id),
+      customer_id VARCHAR(255),
+      customer_name VARCHAR(255),
+      seller VARCHAR(255),
+      payment_method VARCHAR(100),
+      discount NUMERIC DEFAULT 0,
+      subtotal NUMERIC DEFAULT 0,
+      total NUMERIC DEFAULT 0,
+      gender VARCHAR(50),
+      sales_channel VARCHAR(100),
+      delivery_type VARCHAR(100),
+      items JSONB DEFAULT '[]',
+      date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Garante que colunas de whatsapp_schedules existam caso a tabela já tenha sido criada antes
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_to_all BOOLEAN DEFAULT TRUE;
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS customer_ids TEXT[];
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE;
