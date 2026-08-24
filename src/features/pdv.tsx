@@ -19,6 +19,7 @@ export function PDV({
   accent,
   text
 }) {
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
   const [step, setStep] = useState("gate"); // "gate", "register", "order"
   const [phoneQuery, setPhoneQuery] = useState("");
   const [foundCustomer, setFoundCustomer] = useState(null);
@@ -50,17 +51,38 @@ export function PDV({
     setFoundCustomer(match || null);
   };
 
-  const saveNewCustomer = (newCustomerData) => {
+  const saveNewCustomer = async (newCustomerData) => {
     const newCust = {
       id: "c" + Date.now(),
       ...newCustomerData,
       cashback: 0
     };
-    if (typeof setCustomers === "function") {
-      setCustomers([...customers, newCust]);
+
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "x-user-id": user.id || localStorage.getItem("userId") || "user_1"
+    };
+
+    try {
+      // Salva o cliente permanentemente no backend/banco de dados
+      await fetch(`${API_URL}/api/clientes`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(newCust)
+      });
+
+      if (typeof setCustomers === "function") {
+        setCustomers([...customers, newCust]);
+      }
+      setSelectedCustomer(newCust);
+      setStep("order");
+    } catch (error) {
+      console.error("Erro ao salvar cliente:", error);
+      alert("Erro ao salvar novo cliente no servidor.");
     }
-    setSelectedCustomer(newCust);
-    setStep("order");
   };
 
   const startOrderWithoutCustomer = () => {
@@ -130,15 +152,34 @@ export function PDV({
       date: new Date().toISOString()
     };
 
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "x-user-id": user.id || localStorage.getItem("userId") || "user_1"
+    };
+
     try {
+      // Envia a venda para ser salva permanentemente no banco via backend
+      const response = await fetch(`${API_URL}/api/sales`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(newSale)
+      });
+
+      if (!response.ok) {
+        throw new Error("Falha ao salvar a venda no servidor.");
+      }
+
       if (typeof setSales === "function") {
-        await setSales([...sales, newSale]);
+        setSales([...sales, newSale]);
       }
       alert("Venda finalizada e salva com sucesso!");
       backToGate();
     } catch (error) {
       console.error(error);
-      alert("Erro ao conectar com o servidor para salvar a venda.");
+      alert("Erro ao conectar com o servidor para salvar a venda. Verifique se a API está rodando.");
     }
   };
 

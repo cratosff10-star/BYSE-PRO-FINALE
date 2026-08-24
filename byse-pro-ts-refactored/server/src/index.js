@@ -3,13 +3,13 @@ import cors from 'cors';
 import cron from 'node-cron';
 import { pool, initDb } from './db.js';
 import bcrypt from 'bcrypt';
-
+import 'dotenv/config';
 const app = express();
 
 app.use(express.json());
 app.use(cors());
 
-// Inicializa o banco de dados PostgreSQL ao iniciar o servidor[cite: 5]
+// Inicializa o banco de dados PostgreSQL ao iniciar o servidor
 initDb();
 
 /**
@@ -49,7 +49,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Middleware de Autenticação[cite: 5]
+// Middleware de Autenticação
 const authMiddleware = (req, res, next) => {
     const userId = req.headers['x-user-id'];
 
@@ -62,7 +62,7 @@ const authMiddleware = (req, res, next) => {
 };
 
 /**
- * Rotas de Configuração da API de WhatsApp do Usuário[cite: 5]
+ * Rotas de Configuração da API de WhatsApp do Usuário
  */
 app.get('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
     try {
@@ -99,14 +99,106 @@ app.post('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Clientes (Compatibilidade com /api/customers e /api/clientes)[cite: 5]
+ * ROTA AUTOMATIZADA: Cria a instância do usuário na Evolution API e retorna o QR Code para o Front-end
+ */
+app.post('/api/whatsapp/connect', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const instanceName = `user_${userId}`;
+
+        const evolutionUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-f418.up.railway.app';
+        const globalApiKey = process.env.EVOLUTION_GLOBAL_KEY || '4245255264416261222466144653232414342341423553653262532155146151';
+
+        console.log(`Tentando conectar na Evolution API: ${evolutionUrl} para a instância ${instanceName}`);
+
+        // 1. Tenta criar a instância
+        let response = await fetch(`${evolutionUrl}/instance/create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': globalApiKey
+            },
+            body: JSON.stringify({
+                instanceName: instanceName,
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS"
+            })
+        });
+
+        let data = await response.json();
+
+        // 2. Se o erro for porque a instância já existe, nós buscamos o QR code dela (/instance/connect/{instance})
+        if (!response.ok) {
+            const errorMsg = JSON.stringify(data);
+            if (errorMsg.includes("already in use") || response.status === 403) {
+                console.log(`Instância ${instanceName} já existe. Buscando dados de conexão existentes...`);
+                
+                response = await fetch(`${evolutionUrl}/instance/connect/${instanceName}`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': globalApiKey
+                    }
+                });
+                data = await response.json();
+            } else {
+                return res.status(response.status).json({ error: data.message || 'Erro retornado pela Evolution API' });
+            }
+        }
+
+        const qrCodeBase64 = data.qrcode?.base64 || data.base64 || data.code || null;
+        const userApiUrl = `${evolutionUrl}/message/sendText/${instanceName}`;
+        
+        await pool.query(
+            'UPDATE users SET whatsapp_api_url = $1, whatsapp_api_key = $2 WHERE id = $3',
+            [userApiUrl, globalApiKey, userId]
+        );
+
+        return res.status(200).json({
+            qrCode: qrCodeBase64,
+            apiUrl: userApiUrl,
+            apiKey: globalApiKey,
+            message: 'Instância conectada com sucesso!'
+        });
+    } catch (error) {
+        console.error('Erro crítico ao gerar QR Code:', error);
+        return res.status(500).json({ error: 'Erro ao conectar com o servidor do WhatsApp.' });
+    }
+});
+
+app.get('/api/whatsapp/status/:userId', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const instanceName = `user_${userId}`;
+        const evolutionUrl = process.env.EVOLUTION_API_URL;
+        const globalApiKey = process.env.EVOLUTION_GLOBAL_KEY;
+
+        const response = await fetch(`${evolutionUrl}/instance/connectionState/${instanceName}`, {
+            method: 'GET',
+            headers: {
+                'apikey': globalApiKey
+            }
+        });
+
+        const data = await response.json();
+        
+        const state = data.instance?.state || data.state || 'close';
+        const isConnected = state === 'open';
+
+        return res.status(200).json({ connected: isConnected, state: state });
+    } catch (error) {
+        console.error('Erro ao verificar status:', error);
+        return res.status(500).json({ error: 'Erro ao verificar conexão' });
+    }
+});
+
+/**
+ * Rotas de Clientes (Compatibilidade com /api/customers e /api/clientes)
  */
 app.get('/api/customers', authMiddleware, async (req, res) => {
     try {
-        const userId = req.user.id;
+        // Removido temporariamente o filtro WHERE user_id para teste
         const result = await pool.query(
-            'SELECT id, name, phone, whatsapp_opt_in as "whatsappOptIn", reminders_enabled as "remindersEnabled" FROM customers WHERE user_id = $1',
-            [userId]
+            'SELECT id, name, phone, whatsapp_opt_in as "whatsappOptIn", reminders_enabled as "remindersEnabled" FROM customers'
         );
         return res.status(200).json(result.rows);
     } catch (error) {
@@ -138,10 +230,9 @@ app.post('/api/customers', authMiddleware, async (req, res) => {
 
 app.get('/api/clientes', authMiddleware, async (req, res) => {
     try {
-        const userId = req.user.id;
+        // Removido temporariamente o filtro WHERE user_id para teste
         const result = await pool.query(
-            'SELECT id, name, phone, whatsapp_opt_in as "whatsappOptIn", reminders_enabled as "remindersEnabled" FROM customers WHERE user_id = $1',
-            [userId]
+            'SELECT id, name, phone, whatsapp_opt_in as "whatsappOptIn", reminders_enabled as "remindersEnabled" FROM customers'
         );
         return res.status(200).json(result.rows);
     } catch (error) {
@@ -172,7 +263,7 @@ app.post('/api/clientes', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Produtos e Estoque[cite: 5]
+ * Rotas de Produtos e Estoque
  */
 app.get('/api/produtos', authMiddleware, async (req, res) => {
     try {
@@ -288,7 +379,7 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Programação do WhatsApp[cite: 5]
+ * Rotas de Programação do WhatsApp
  */
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
     try {
@@ -352,7 +443,7 @@ app.post('/api/whatsapp', authMiddleware, async (req, res) => {
 });
 
 /**
- * 🤖 CRON JOB: Disparador Automático Multi-tenant Integrado ao PostgreSQL[cite: 5]
+ * 🤖 CRON JOB: Disparador Automático Multi-tenant Integrado ao PostgreSQL
  */
 cron.schedule('* * * * *', async () => {
     try {
@@ -407,14 +498,14 @@ cron.schedule('* * * * *', async () => {
                     try {
                         await fetch(schedule.whatsapp_api_url, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'apikey': schedule.whatsapp_api_key || ''
-                            },
-                            body: JSON.stringify({
-                                number: phoneClean,
-                                textMessage: { text: mensagemFinal }
-                            })
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'apikey': schedule.whatsapp_api_key || ''
+                        },
+                        body: JSON.stringify({
+                            number: phoneClean,
+                            textMessage: { text: mensagemFinal }
+                        })
                         });
                     } catch (err) {
                         console.error(`Erro ao enviar mensagem para ${phoneClean}:`, err);

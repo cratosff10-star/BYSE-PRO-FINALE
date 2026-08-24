@@ -11,7 +11,9 @@ import {
   Save,
   X,
   MessageCircle,
-  Key
+  Key,
+  QrCode,
+  Smartphone
 } from "lucide-react";
 import { FONT_BODY, SUCCESS } from "../data/constants";
 import { inputStyle } from "../utils/helpers";
@@ -53,24 +55,55 @@ function WhatsApp({
   text,
   customers = []
 }) {
-  const API_URL = "http://localhost:3333";
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
   const [apiUrlInput, setApiUrlInput] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [configSaved, setConfigSaved] = useState(false);
+  
+  // Estado interno para garantir que os clientes sejam carregados caso a prop venha vazia
+  const [localCustomers, setLocalCustomers] = useState(customers);
+  
+  // Estados para gerenciar o QR Code, conexão e polling de status da Evolution API
+  const [qrCodeData, setQrCodeData] = useState(null);
+  const [loadingQr, setLoadingQr] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("Desconectado");
 
+  // Sincroniza caso a prop mude
+  useEffect(() => {
+    if (customers && customers.length > 0) {
+      setLocalCustomers(customers);
+    }
+  }, [customers]);
+
+  // Carrega as configurações, credenciais, clientes e programações salvas no banco ao abrir a página
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem("byse_token");
       const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
-      const headers = { "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" };
+      const headers = { 
+        "Authorization": `Bearer ${token}`, 
+        "x-user-id": user.id || localStorage.getItem("userId") || "user_1" 
+      };
 
       try {
+        // Busca clientes diretamente caso venham vazios via props
+        const resClientes = await fetch(`${API_URL}/api/clientes`, { headers });
+        if (resClientes.ok) {
+          const clientesData = await resClientes.json();
+          if (Array.isArray(clientesData) && clientesData.length > 0) {
+            setLocalCustomers(clientesData);
+          }
+        }
+
         const resConfig = await fetch(`${API_URL}/api/user/whatsapp-config`, { headers });
         if (resConfig.ok) {
           const configData = await resConfig.json();
           setApiUrlInput(configData.apiUrl || "");
           setApiKeyInput(configData.apiKey || "");
+          if (configData.apiUrl) {
+            setConnectionStatus("Configurado");
+          }
         }
 
         const response = await fetch(`${API_URL}/api/whatsapp`, { headers });
@@ -86,30 +119,70 @@ function WhatsApp({
     };
 
     fetchData();
-  }, []);
+  }, [setWaSchedule, API_URL]);
 
-  const saveUserConfig = async (e) => {
-    e.preventDefault();
+  // Polling automático para verificar o status da conexão após gerar o QR Code
+  useEffect(() => {
+    let interval;
+
+    if (qrCodeData && connectionStatus !== "Conectado") {
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/whatsapp/status/${user.id || 'user_1'}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "x-user-id": user.id || "user_1"
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.connected) {
+              setConnectionStatus("Conectado");
+              setQrCodeData(null); 
+              clearInterval(interval);
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao verificar status da conexão:", err);
+        }
+      }, 3000);
+    }
+
+    return () => clearInterval(interval);
+  }, [qrCodeData, connectionStatus, API_URL]);
+
+  // Função para solicitar a criação de instância e gerar o QR Code direto na tela
+  const handleGerarQrCode = async () => {
+    setLoadingQr(true);
     const token = localStorage.getItem("byse_token");
     const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
 
     try {
-      const res = await fetch(`${API_URL}/api/user/whatsapp-config`, {
+      const res = await fetch(`${API_URL}/api/whatsapp/connect`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
-          "x-user-id": user.id || "user_1"
-        },
-        body: JSON.stringify({ apiUrl: apiUrlInput, apiKey: apiKeyInput })
+          "x-user-id": user.id || localStorage.getItem("userId") || "user_1",
+          "Content-Type": "application/json"
+        }
       });
-
-      if (res.ok) {
-        setConfigSaved(true);
-        setTimeout(() => setConfigSaved(false), 3000);
+      const data = await res.json();
+      if (data.qrCode) {
+        setQrCodeData(data.qrCode);
+        if (data.apiUrl) setApiUrlInput(data.apiUrl);
+        if (data.apiKey) setApiKeyInput(data.apiKey);
+        setConnectionStatus("Aguardando Leitura do QR Code");
+      } else {
+        alert("Não foi possível gerar o QR Code. Verifique as configurações globais da Evolution API.");
       }
-    } catch (error) {
-      console.error("Erro ao salvar credenciais:", error);
+    } catch (err) {
+      console.error("Erro ao gerar QR Code:", err);
+      alert("Erro ao conectar com o servidor do WhatsApp.");
+    } finally {
+      setLoadingQr(false);
     }
   };
 
@@ -124,7 +197,7 @@ function WhatsApp({
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
-          "x-user-id": user.id || "user_1"
+          "x-user-id": user.id || localStorage.getItem("userId") || "user_1"
         },
         body: JSON.stringify(newSchedules)
       });
@@ -248,13 +321,13 @@ function WhatsApp({
 
   const filteredCustomers = useMemo(() => {
     const search = customerSearch.toLowerCase().trim();
-    if (!search) return customers;
-    return customers.filter((c) => {
+    if (!search) return localCustomers;
+    return localCustomers.filter((c) => {
       const name = String(c.name || "").toLowerCase();
       const phone = String(c.phone || "").toLowerCase();
       return name.includes(search) || phone.includes(search);
     });
-  }, [customers, customerSearch]);
+  }, [localCustomers, customerSearch]);
 
   const getDaysLabel = (days) => {
     if (!Array.isArray(days) || days.length === 0) return "Nenhum dia selecionado";
@@ -265,48 +338,52 @@ function WhatsApp({
     <div>
       <SectionTitle
         title="Integração com WhatsApp"
-        sub="Configure sua API individual e gerencie disparos automáticos"
+        sub="Conecte seu WhatsApp via QR Code e gerencie seus disparos automáticos"
         subtext={subtext}
       />
 
-      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <Key size={16} color={accent} />
-          Credenciais da API de WhatsApp da sua Conta
+      {/* PAINEL DE CONEXÃO VIA QR CODE */}
+      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 18, marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Smartphone size={18} color={accent} />
+          Conexão do WhatsApp do Usuário
+          <Pill color={connectionStatus === "Conectado" ? SUCCESS : subtext}>
+            {connectionStatus}
+          </Pill>
         </div>
-        <form onSubmit={saveUserConfig} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div>
-            <SLabel subtext={subtext}>URL DA API (ENDPOINT DE ENVIO)</SLabel>
-            <input
-              type="text"
-              placeholder="Ex: https://sua-api.com/message/sendText/instancia"
-              value={apiUrlInput}
-              onChange={(e) => setApiUrlInput(e.target.value)}
-              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }}
-            />
+        <p style={{ fontSize: 12.5, color: subtext, marginBottom: 14 }}>
+          Clique no botão abaixo para gerar o seu QR Code de conexão instantânea. Assim que escanear com o seu celular, sua conta estará pronta para os disparos automáticos nos números dos clientes cadastrados.
+        </p>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={handleGerarQrCode}
+            disabled={loadingQr}
+            style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <QrCode size={16} />
+            {loadingQr ? "Gerando QR Code..." : "Gerar QR Code de Conexão"}
+          </button>
+        </div>
+
+        {connectionStatus === "Conectado" && (
+          <div style={{ marginTop: 15, padding: 10, background: `${SUCCESS}15`, border: `1px solid ${SUCCESS}`, borderRadius: 8, color: SUCCESS, fontWeight: 600, fontSize: 13 }}>
+            WhatsApp conectado com sucesso! Suas mensagens serão enviadas automaticamente nos horários programados.
           </div>
-          <div>
-            <SLabel subtext={subtext}>API KEY (CHAVE DE AUTENTICAÇÃO)</SLabel>
-            <input
-              type="password"
-              placeholder="Sua chave secreta da API"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }}
-            />
+        )}
+
+        {qrCodeData && (
+          <div style={{ marginTop: 18, textAlign: "center", background: `${card}dd`, padding: 15, borderRadius: 10, border: `1px solid ${border}`, display: "inline-block" }}>
+            <img src={qrCodeData} alt="QR Code WhatsApp" style={{ width: 200, height: 200, borderRadius: 8 }} />
+            <p style={{ fontSize: 12, color: subtext, marginTop: 8 }}>
+              Abra o WhatsApp no celular {'>'} Aparelhos Conectados {'>'} Conectar um Aparelho
+            </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-            <button
-              type="submit"
-              style={{ background: accent, color: "#fff", border: "none", borderRadius: 7, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
-            >
-              Salvar Credenciais
-            </button>
-            {configSaved && <span style={{ fontSize: 12, color: SUCCESS, fontWeight: 600 }}>Salvo com sucesso!</span>}
-          </div>
-        </form>
+        )}
       </div>
 
+      {/* LISTA DE AGENDAMENTOS DE MENSAGENS */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {normalizedSchedule.map((schedule) => {
           const usedDays = getUsedDays(schedule.id);
@@ -366,7 +443,7 @@ function WhatsApp({
                   <div>
                     <SLabel subtext={subtext}>CLIENTES</SLabel>
                     <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 600 }}>
-                      {schedule.sendToAll ? `Todos (${customers.length})` : `${schedule.customerIds?.length || 0} selecionado(s)`}
+                      {schedule.sendToAll ? `Todos (${localCustomers.length})` : `${schedule.customerIds?.length || 0} selecionado(s)`}
                     </div>
                   </div>
                 </div>
@@ -426,9 +503,8 @@ function WhatsApp({
                       />
                     </div>
 
-                    {/* SELEÇÃO DE PÚBLICO (TODOS OU ESPECÍFICOS) */}
                     <div style={{ marginBottom: 12 }}>
-                      <SLabel subtext={subtext}>DESTINATÁRIOS</SLabel>
+                      <SLabel subtext={subtext}>DESTINATÁRIOS (TELEFONES DOS CLIENTES)</SLabel>
                       <div style={{ display: "flex", gap: 15, marginTop: 6, marginBottom: 8 }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", fontWeight: editSendToAll ? 600 : 400 }}>
                           <input
@@ -437,7 +513,7 @@ function WhatsApp({
                             checked={editSendToAll}
                             onChange={() => setEditSendToAll(true)}
                           />
-                          Enviar para todos os clientes ({customers.length})
+                          Enviar para todos os clientes ({localCustomers.length})
                         </label>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", fontWeight: !editSendToAll ? 600 : 400 }}>
                           <input
@@ -486,7 +562,7 @@ function WhatsApp({
                                   >
                                     <div>
                                       <span style={{ fontWeight: 600 }}>{c.name}</span>
-                                      <span style={{ color: subtext, marginLeft: 8 }}>{c.phone}</span>
+                                      <span style={{ color: subtext, marginLeft: 8 }}>{c.phone || "Sem telefone"}</span>
                                     </div>
                                     {isSelected && <Check size={14} color={accent} />}
                                   </div>
