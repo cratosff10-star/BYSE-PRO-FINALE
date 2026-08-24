@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cron from 'node-cron';
 import { pool, initDb } from './db.js';
+import bcrypt from 'bcrypt';
 
 const app = express();
 
@@ -18,9 +19,10 @@ app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
         
+        // Busca o usuário pelo e-mail
         const result = await pool.query(
-            'SELECT id, name, email FROM users WHERE email = $1 AND password = $2',
-            [email, password]
+            'SELECT id, name, email, password FROM users WHERE email = $1',
+            [email]
         );
 
         if (result.rows.length === 0) {
@@ -28,6 +30,15 @@ app.post('/api/login', async (req, res) => {
         }
 
         const user = result.rows[0];
+
+        // Compara a senha digitada em texto plano com o hash criptografado do banco
+        const senhaValida = await bcrypt.compare(password, user.password);
+
+        if (!senhaValida) {
+            return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+        }
+
+        // Se a senha for válida, retorna o token e os dados do usuário
         return res.status(200).json({
             token: 'jwt_token_' + user.id,
             user: { id: user.id, name: user.name, email: user.email }
