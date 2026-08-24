@@ -26,19 +26,10 @@ function SupplementSystem() {
     const [device, setDevice] = useState("mobile");   
     const [tab, setTab] = useState("dashboard");    
 
-    // Inicialização segura com localStorage para evitar perda de dados no reload
-    const [products, setProducts] = useState(() => {
-        try { const saved = localStorage.getItem("byse_products"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
-    });
-    const [customers, setCustomers] = useState(() => {
-        try { const saved = localStorage.getItem("byse_customers"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
-    });
-    const [sellers, setSellers] = useState(() => {
-        try { const saved = localStorage.getItem("byse_sellers"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
-    });
-    const [sales, setSales] = useState(() => {
-        try { const saved = localStorage.getItem("byse_sales"); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
-    });
+    const [products, setProducts] = useState([]);
+    const [customers, setCustomers] = useState([]);
+    const [sellers, setSellers] = useState([]);
+    const [sales, setSales] = useState([]);
 
     const [fiados, setFiados] = useState([]);
     const [adEntries, setAdEntries] = useState([]);
@@ -60,12 +51,11 @@ function SupplementSystem() {
         };
     };
 
-    // 🔍 Sincronização robusta com o backend corrigindo a nomenclatura dos campos
+    // Sincronização protegida restrita ao usuário logado
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
         try {
-            // 1. Buscar Clientes
             const resCustomers = await fetch(`${API_URL}/customers`, { headers });
             if (resCustomers.ok) {
                 const data = await resCustomers.json();
@@ -75,7 +65,6 @@ function SupplementSystem() {
                 }
             }
 
-            // 2. Buscar Vendas (Mapeando customer_id para customer para manter compatibilidade)
             const resSales = await fetch(`${API_URL}/sales`, { headers });
             if (resSales.ok) {
                 const data = await resSales.json();
@@ -89,7 +78,6 @@ function SupplementSystem() {
                 }
             }
 
-            // 3. Buscar Produtos
             const resProducts = await fetch(`${API_URL}/products`, { headers });
             if (resProducts.ok) {
                 const data = await resProducts.json();
@@ -99,7 +87,6 @@ function SupplementSystem() {
                 }
             }
 
-            // 4. Buscar Vendedores
             const resSellers = await fetch(`${API_URL}/sellers`, { headers });
             if (resSellers.ok) {
                 const data = await resSellers.json();
@@ -154,11 +141,10 @@ function SupplementSystem() {
         setFiados([]);
     };
 
-    // Salvar/Atualizar clientes com persistência imediata local + backend
     const handleUpdateCustomers = (newCustomers) => {
         setCustomers(newCustomers);
         localStorage.setItem("byse_customers", JSON.stringify(newCustomers));
-        const latestCustomer = Array.isArray(newCustomers) ? newCustomers[newCustomers.length - 1] : null;
+        const latestCustomer = Array.isArray(newCustomers) && newCustomers.length > 0 ? newCustomers[newCustomers.length - 1] : null;
         
         if (latestCustomer) {
             fetch(`${API_URL}/customers`, {
@@ -171,17 +157,14 @@ function SupplementSystem() {
                     cpf: latestCustomer.cpf || "",
                     cashback: latestCustomer.cashback || 0
                 })
-            })
-            .then(res => { if (res.ok) fetchUserData(); })
-            .catch(err => console.error("Erro ao salvar cliente no banco:", err));
+            }).catch(err => console.error("Erro ao salvar cliente no banco:", err));
         }
     };
 
-    // Salvar/Atualizar produtos
     const handleUpdateProducts = (newProducts) => {
         setProducts(newProducts);
         localStorage.setItem("byse_products", JSON.stringify(newProducts));
-        const latestProduct = Array.isArray(newProducts) ? newProducts[newProducts.length - 1] : null;
+        const latestProduct = Array.isArray(newProducts) && newProducts.length > 0 ? newProducts[newProducts.length - 1] : null;
 
         if (latestProduct) {
             fetch(`${API_URL}/products`, {
@@ -194,17 +177,14 @@ function SupplementSystem() {
                     price: Number(latestProduct.price || 0),
                     barcode: latestProduct.barcode || ""
                 })
-            })
-            .then(res => { if (res.ok) fetchUserData(); })
-            .catch(err => console.error("Erro ao salvar produto no banco:", err));
+            }).catch(err => console.error("Erro ao salvar produto no banco:", err));
         }
     };
 
-    // Salvar/Atualizar vendedores
     const handleUpdateSellers = (newSellers) => {
         setSellers(newSellers);
         localStorage.setItem("byse_sellers", JSON.stringify(newSellers));
-        const latestSeller = Array.isArray(newSellers) ? newSellers[newSellers.length - 1] : null;
+        const latestSeller = Array.isArray(newSellers) && newSellers.length > 0 ? newSellers[newSellers.length - 1] : null;
 
         if (latestSeller) {
             fetch(`${API_URL}/sellers`, {
@@ -214,21 +194,18 @@ function SupplementSystem() {
                     id: latestSeller.id || `sel_${Date.now()}`,
                     name: latestSeller.name
                 })
-            })
-            .then(res => { if (res.ok) fetchUserData(); })
-            .catch(err => console.error("Erro ao salvar vendedor no banco:", err));
+            }).catch(err => console.error("Erro ao salvar vendedor no banco:", err));
         }
     };
 
-    // Registrar vendas mapeando corretamente customerId
     const handleUpdateSales = async (newSales) => {
         setSales(newSales);
         localStorage.setItem("byse_sales", JSON.stringify(newSales));
-        const latestSale = Array.isArray(newSales) ? newSales[newSales.length - 1] : null;
+        const latestSale = Array.isArray(newSales) && newSales.length > 0 ? newSales[newSales.length - 1] : null;
         
         if (latestSale) {
             try {
-                const res = await fetch(`${API_URL}/sales`, {
+                await fetch(`${API_URL}/sales`, {
                     method: "POST",
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
@@ -240,10 +217,6 @@ function SupplementSystem() {
                         purchasedAt: latestSale.date || new Date().toISOString()
                     })
                 });
-
-                if (res.ok) {
-                    await fetchUserData();
-                }
             } catch (err) {
                 console.error("Erro de conexão ao registrar venda:", err);
             }
@@ -292,7 +265,7 @@ function SupplementSystem() {
         if (tab === "dashboard") return <Dashboard {...{ sales, products, customers, sellers, card, border, subtext, accent, text }} />;     
         if (tab === "clientes") return <Clientes customers={customers} setCustomers={handleUpdateCustomers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "estoque") return <Estoque products={products} setProducts={handleUpdateProducts} {...{ stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
-        if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} {...{ fiados, setFiados, cashbackPct, card, border, subtext, accent, text, dark }} />;     
+        if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} onSaleCompleted={fetchUserData} {...{ fiados, setFiados, cashbackPct, card, border, subtext, accent, text, dark }} />;     
         if (tab === "vendedores") return <Vendedores sellers={sellers} setSellers={handleUpdateSellers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
         if (tab === "cashback") return <Cashback customers={customers} setCustomers={handleUpdateCustomers} {...{ cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     

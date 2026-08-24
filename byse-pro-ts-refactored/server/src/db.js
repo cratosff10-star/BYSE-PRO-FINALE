@@ -24,7 +24,7 @@ export async function initDb() {
 
     CREATE TABLE IF NOT EXISTS customers (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255) REFERENCES users(id),
+      user_id VARCHAR(255),
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL,
       whatsapp_opt_in INT DEFAULT 0,
@@ -34,7 +34,7 @@ export async function initDb() {
 
     CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255) REFERENCES users(id),
+      user_id VARCHAR(255),
       name VARCHAR(255) NOT NULL,
       category VARCHAR(255),
       barcode VARCHAR(255),
@@ -53,27 +53,25 @@ export async function initDb() {
 
     CREATE TABLE IF NOT EXISTS stock_locations (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255) REFERENCES users(id),
+      user_id VARCHAR(255),
       name VARCHAR(255) NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS whatsapp_schedules (
       id SERIAL PRIMARY KEY,
-      user_id VARCHAR(255) REFERENCES users(id),
-      schedule_index INT CHECK (schedule_index BETWEEN 1 AND 3),
+      user_id VARCHAR(255),
+      schedule_index INT,
       days_of_week TEXT[],
       send_time TIME NOT NULL,
       message_template TEXT,
       send_to_all BOOLEAN DEFAULT TRUE,
       customer_ids TEXT[],
-      enabled BOOLEAN DEFAULT FALSE,
-      UNIQUE(user_id, schedule_index)
+      enabled BOOLEAN DEFAULT FALSE
     );
 
-    -- ADIÇÃO DA TABELA DE VENDAS
     CREATE TABLE IF NOT EXISTS sales (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255) REFERENCES users(id),
+      user_id VARCHAR(255),
       customer_id VARCHAR(255),
       customer_name VARCHAR(255),
       seller VARCHAR(255),
@@ -88,7 +86,22 @@ export async function initDb() {
       date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Garante que colunas de whatsapp_schedules existam caso a tabela já tenha sido criada antes
+    CREATE TABLE IF NOT EXISTS sellers (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      commission_pct NUMERIC DEFAULT 5,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Remove restrições de chave estrangeira caso tenham sido criadas anteriormente
+    ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_user_id_fkey;
+    ALTER TABLE products DROP CONSTRAINT IF EXISTS products_user_id_fkey;
+    ALTER TABLE stock_locations DROP CONSTRAINT IF EXISTS stock_locations_user_id_fkey;
+    ALTER TABLE whatsapp_schedules DROP CONSTRAINT IF EXISTS whatsapp_schedules_user_id_fkey;
+    ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_user_id_fkey;
+    ALTER TABLE sellers DROP CONSTRAINT IF EXISTS sellers_user_id_fkey;
+
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_to_all BOOLEAN DEFAULT TRUE;
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS customer_ids TEXT[];
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE;
@@ -96,5 +109,5 @@ export async function initDb() {
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_time TIME;
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS message_template TEXT;
   `);
-  console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
+  console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso[cite: 7]!');
 }

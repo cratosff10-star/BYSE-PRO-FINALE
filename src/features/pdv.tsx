@@ -10,9 +10,11 @@ export function PDV({
   customers = [],
   setCustomers,
   products = [],
+  setProducts,
   sellers = [],
   sales = [],
   setSales,
+  onSaleCompleted,
   card,
   border,
   subtext,
@@ -67,7 +69,6 @@ export function PDV({
     };
 
     try {
-      // Salva o cliente permanentemente no backend/banco de dados
       await fetch(`${API_URL}/api/clientes`, {
         method: "POST",
         headers,
@@ -161,7 +162,6 @@ export function PDV({
     };
 
     try {
-      // Envia a venda para ser salva permanentemente no banco via backend
       const response = await fetch(`${API_URL}/api/sales`, {
         method: "POST",
         headers,
@@ -175,6 +175,12 @@ export function PDV({
       if (typeof setSales === "function") {
         setSales([...sales, newSale]);
       }
+
+      // Sincroniza e atualiza o estoque/dados imediatamente na tela principal
+      if (typeof onSaleCompleted === "function") {
+        onSaleCompleted();
+      }
+
       alert("Venda finalizada e salva com sucesso!");
       backToGate();
     } catch (error) {
@@ -609,9 +615,11 @@ export function PDV({
               onChange={(e) => setSeller(e.target.value)}
               style={{ ...inputStyle(border, text), marginBottom: 10 }}
             >
-              <option value="Juliana Costa">Juliana Costa</option>
-              <option value="Bruno Lima">Bruno Lima</option>
-              <option value="Pedro">Pedro</option>
+              {sellers.map((s) => (
+                <option key={s.id || s.name} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
             </select>
 
             <label style={lbl(subtext)}>Forma de pagamento</label>

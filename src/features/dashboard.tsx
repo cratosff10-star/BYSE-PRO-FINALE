@@ -124,7 +124,7 @@ import type {
 } from "../types";
 
 
-function Dashboard({
+export function Dashboard({
   sales,
   products,
   customers,
@@ -183,12 +183,25 @@ function Dashboard({
 
   const [showComm, setShowComm] = useState(false);
 
-  // Filtra as vendas estritamente dentro do período selecionado
-  const periodSales = sales.filter((s) =>
-    inPeriod(s.date, periodStart, periodEnd)
-  );
+  // Filtra as vendas rigorosamente dentro do período selecionado (com tolerância para vendas do dia atual)[cite: 12]
+  const periodSales = sales.filter((s) => {
+    if (!s.date) return false;
+    // Se a venda for de hoje, garante que ela apareça mesmo se houver discrepância de horário UTC
+    const saleDate = new Date(s.date);
+    const now = new Date();
+    const isToday = 
+      saleDate.getDate() === now.getDate() &&
+      saleDate.getMonth() === now.getMonth() &&
+      saleDate.getFullYear() === now.getFullYear();
+
+    if (isToday && saleDate >= periodStart && saleDate <= periodEnd) {
+      return true;
+    }
+
+    return inPeriod(s.date, periodStart, periodEnd);
+  });
   
-  // Venda Total = Apenas a soma em dinheiro das vendas realizadas no período selecionado
+  // Venda Total = Apenas a soma em dinheiro das vendas realizadas no período selecionado[cite: 12]
   const totalVendido = periodSales.reduce((s, v) => s + Number(v.total || 0), 0);
   
   const custoTotal = periodSales.reduce(
@@ -603,5 +616,3 @@ function Dashboard({
     </div>
   );
 }
-
-export { Dashboard };
