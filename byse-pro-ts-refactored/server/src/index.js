@@ -308,10 +308,25 @@ const handlePostCustomer = async (req, res) => {
     }
 };
 
+const handleDeleteCustomer = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const customerId = req.params.id;
+        await pool.query('DELETE FROM customers WHERE id = $1 AND user_id = $2', [customerId, userId]);
+        return res.status(200).json({ message: 'Cliente removido com sucesso' });
+    } catch (error) {
+        console.error('Erro ao remover cliente:', error);
+        return res.status(500).json({ error: 'Erro interno ao remover cliente' });
+    }
+};
+
 app.get('/api/customers', authMiddleware, handleGetCustomers);
 app.post('/api/customers', authMiddleware, handlePostCustomer);
+app.delete('/api/customers/:id', authMiddleware, handleDeleteCustomer);
+
 app.get('/api/clientes', authMiddleware, handleGetCustomers);
 app.post('/api/clientes', authMiddleware, handlePostCustomer);
+app.delete('/api/clientes/:id', authMiddleware, handleDeleteCustomer);
 
 /**
  * Rotas de Produtos e Estoque (Isoladas por user_id)

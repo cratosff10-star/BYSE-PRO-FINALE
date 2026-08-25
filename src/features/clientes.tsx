@@ -45,7 +45,7 @@ function Clientes({
   // Utiliza a variável de ambiente do Railway configurada na Vercel, com fallback para o ambiente local
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
-  // 🔄 Busca os clientes do usuário logado no backend assim que o componente carrega[cite: 8]
+  // 🔄 Busca os clientes do usuário logado no backend assim que o componente carrega
   useEffect(() => {
     const fetchCustomers = async () => {
       const token = localStorage.getItem("byse_token");
@@ -74,7 +74,7 @@ function Clientes({
     c.name.toLowerCase().includes(query.toLowerCase())
   );
 
-  // 💾 Envia o novo cliente para salvar no banco de dados via Backend[cite: 8]
+  // 💾 Envia o novo cliente para salvar no banco de dados via Backend
   const addCustomer = async () => {
     if (!form.name || !form.phone) return;
 
@@ -102,7 +102,7 @@ function Clientes({
       }
 
       const data = await response.json();
-      // Atualiza o estado com o cliente retornado pelo banco (garantindo o ID correto)[cite: 8]
+      // Atualiza o estado com o cliente retornado pelo banco (garantindo o ID correto)
       setCustomers([...customers, data.cliente || data]);
       setForm({ name: "", phone: "", cpf: "" });
       setShowForm(false);
@@ -112,10 +112,30 @@ function Clientes({
     }
   };
 
-  const deleteCustomer = (id, e) => {
+  const deleteCustomer = async (id, e) => {
     e.stopPropagation();
     if (confirm("Tem certeza que deseja excluir este cliente?")) {
-      setCustomers(customers.filter(c => c.id !== id));
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+
+      try {
+        const response = await fetch(`${API_URL}/api/clientes/${id}`, {
+          method: "DELETE",
+          headers: { 
+            "Authorization": `Bearer ${token}`,
+            "x-user-id": user.id || "user_1"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Erro HTTP: ${response.status}`);
+        }
+
+        setCustomers(customers.filter(c => c.id !== id));
+      } catch (error) {
+        console.error("Erro ao excluir cliente:", error);
+        alert("Falha ao excluir o cliente no servidor.");
+      }
     }
   };
 
