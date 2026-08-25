@@ -102,6 +102,10 @@ export async function initDb() {
     ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_user_id_fkey;
     ALTER TABLE sellers DROP CONSTRAINT IF EXISTS sellers_user_id_fkey;
 
+    -- Garante a unicidade composta para o upsert das programações do WhatsApp por usuário
+    ALTER TABLE whatsapp_schedules DROP CONSTRAINT IF EXISTS whatsapp_schedules_user_id_schedule_index_key;
+    ALTER TABLE whatsapp_schedules ADD CONSTRAINT whatsapp_schedules_user_id_schedule_index_key UNIQUE (user_id, schedule_index);
+
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_to_all BOOLEAN DEFAULT TRUE;
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS customer_ids TEXT[];
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE;
@@ -109,5 +113,5 @@ export async function initDb() {
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_time TIME;
     ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS message_template TEXT;
   `);
-  console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso[cite: 7]!');
+  console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
 }

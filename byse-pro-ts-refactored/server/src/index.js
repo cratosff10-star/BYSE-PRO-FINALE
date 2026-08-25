@@ -156,11 +156,8 @@ app.post('/api/whatsapp/connect', authMiddleware, async (req, res) => {
         }
 
         const qrCodeBase64 = data.qrcode?.base64 || data.base64 || data.code || null;
-        
-        // URL completa de disparo (/message/sendText/) para garantir o envio imediato e via cron
         const userApiUrl = `${evolutionUrl}/message/sendText/${instanceName}`;
         
-        // Salva imediatamente no banco para evitar erro 400 em disparos futuros
         await pool.query(
             'UPDATE users SET whatsapp_api_url = $1, whatsapp_api_key = $2 WHERE id = $3',
             [userApiUrl, globalApiKey, userId]
@@ -256,12 +253,22 @@ app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
                     },
                     body: JSON.stringify({
                         number: phoneClean,
-                        text: mensagemFinal // Ajustado para Evolution API v2
+                        text: mensagemFinal,
+                        options: {
+                            delay: 1200,
+                            presence: "composing"
+                        }
                     })
                 });
-                if (response.ok) enviados++;
+
+                const responseData = await response.json();
+                if (response.ok) {
+                    enviados++;
+                } else {
+                    console.error(`Erro retornado pela Evolution API para ${phoneClean}:`, responseData);
+                }
             } catch (err) {
-                console.error(`Erro ao enviar mensagem imediata para ${phoneClean}:`, err);
+                console.error(`Erro de conexão ao disparar mensagem para ${phoneClean}:`, err);
             }
         }
 
@@ -773,11 +780,15 @@ cron.schedule('* * * * *', async () => {
                             },
                             body: JSON.stringify({
                                 number: phoneClean,
-                                text: mensagemFinal // Ajustado para Evolution API v2
+                                text: mensagemFinal,
+                                options: {
+                                    delay: 1200,
+                                    presence: "composing"
+                                }
                             })
                         });
                     } catch (err) {
-                        console.error(`Erro ao enviar mensagem para ${phoneClean}:`, err);
+                        console.error(`Erro ao enviar mensagem automática para ${phoneClean}:`, err);
                     }
                 }
             }
