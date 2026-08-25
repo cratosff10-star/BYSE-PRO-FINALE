@@ -157,9 +157,10 @@ app.post('/api/whatsapp/connect', authMiddleware, async (req, res) => {
 
         const qrCodeBase64 = data.qrcode?.base64 || data.base64 || data.code || null;
         
-        // CORREÇÃO: Salva a URL completa de disparo (/message/sendText/) para garantir o envio imediato e via cron
+        // URL completa de disparo (/message/sendText/) para garantir o envio imediato e via cron
         const userApiUrl = `${evolutionUrl}/message/sendText/${instanceName}`;
         
+        // Salva imediatamente no banco para evitar erro 400 em disparos futuros
         await pool.query(
             'UPDATE users SET whatsapp_api_url = $1, whatsapp_api_key = $2 WHERE id = $3',
             [userApiUrl, globalApiKey, userId]
@@ -255,7 +256,7 @@ app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
                     },
                     body: JSON.stringify({
                         number: phoneClean,
-                        textMessage: { text: mensagemFinal }
+                        text: mensagemFinal // Ajustado para Evolution API v2
                     })
                 });
                 if (response.ok) enviados++;
@@ -772,7 +773,7 @@ cron.schedule('* * * * *', async () => {
                             },
                             body: JSON.stringify({
                                 number: phoneClean,
-                                textMessage: { text: mensagemFinal }
+                                text: mensagemFinal // Ajustado para Evolution API v2
                             })
                         });
                     } catch (err) {
