@@ -16,7 +16,9 @@ import { TrafegoPago, CanaisDeVenda } from "../features/marketing";
 import { DRE, Planos } from "../features/finance"; 
 import { Fiados } from "../features/fiados";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333/api";
+    // Garante que se a URL terminar com '/', removemos, e se não tiver '/api', nós adicionamos automaticamente
+    const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:3333";
+    const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl.endsWith('/') ? rawApiUrl.slice(0, -1) : rawApiUrl}/api`;
 
 function SupplementSystem() {   
     const [user, setUser] = useState<any>(null);
