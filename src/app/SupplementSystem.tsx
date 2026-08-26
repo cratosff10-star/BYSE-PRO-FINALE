@@ -16,7 +16,7 @@ import { TrafegoPago, CanaisDeVenda } from "../features/marketing";
 import { DRE, Planos } from "../features/finance"; 
 import { Fiados } from "../features/fiados";
 
-const API_URL = "http://localhost:3333/api";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333/api";
 
 function SupplementSystem() {   
     const [user, setUser] = useState<any>(null);
