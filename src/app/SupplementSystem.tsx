@@ -51,7 +51,7 @@ function SupplementSystem() {
         };
     };
 
-    // Sincronização protegida incluindo os Fiados do banco de dados
+    // Sincronização protegida incluindo os Fiados do banco de dados e normalização segura de vendas
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
@@ -71,7 +71,10 @@ function SupplementSystem() {
                 if (Array.isArray(data)) {
                     const normalizedSales = data.map(s => ({
                         ...s,
-                        customer: s.customer || s.customer_id || s.customerId
+                        customerId: s.customerId || s.customer_id || s.customer || null,
+                        customer_id: s.customer_id || s.customerId || s.customer || null,
+                        customerName: s.customerName || s.customer_name || 'Cliente Geral',
+                        customer_name: s.customer_name || s.customerName || 'Cliente Geral'
                     }));
                     setSales(normalizedSales);
                     localStorage.setItem("byse_sales", JSON.stringify(normalizedSales));
@@ -254,7 +257,7 @@ function SupplementSystem() {
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
                         id: latestSale.id || `pur_${Date.now()}`,
-                        customerId: latestSale.customer || latestSale.customer_id || latestSale.customerId || null,
+                        customerId: latestSale.customerId || latestSale.customer_id || latestSale.customer || null,
                         customer_name: latestSale.customer_name || latestSale.customerName || 'Cliente Geral',
                         total: Number(latestSale.total || 0),
                         subtotal: Number(latestSale.subtotal || latestSale.total || 0),

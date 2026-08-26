@@ -420,6 +420,7 @@ app.delete('/api/products/:id', authMiddleware, async (req, res) => {
 
 /**
  * Rotas de Vendas (PDV) (Isoladas por user_id)
+ * Garantindo a conversão precisa de colunas e datas corretas para o frontend.
  */
 app.get('/api/sales', authMiddleware, async (req, res) => {
     try {
@@ -438,16 +439,16 @@ app.get('/api/sales', authMiddleware, async (req, res) => {
             seller: s.seller,
             paymentMethod: s.payment_method,
             payment_method: s.payment_method,
-            discount: Number(s.discount),
-            subtotal: Number(s.subtotal),
-            total: Number(s.total),
+            discount: Number(s.discount || 0),
+            subtotal: Number(s.subtotal || 0),
+            total: Number(s.total || 0),
             gender: s.gender,
             salesChannel: s.sales_channel,
             sales_channel: s.sales_channel,
             deliveryType: s.delivery_type,
             delivery_type: s.delivery_type,
             items: typeof s.items === 'string' ? JSON.parse(s.items || '[]') : (s.items || []),
-            date: s.date
+            date: s.date ? new Date(s.date).toISOString() : new Date().toISOString()
         }));
 
         return res.status(200).json(salesFormatted);
@@ -534,7 +535,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Fiados / Crediário (Atualizadas e compatíveis com o componente front-end)
+ * Rotas de Fiados / Crediário
  */
 app.get('/api/fiados', authMiddleware, async (req, res) => {
     try {
@@ -605,7 +606,7 @@ app.delete('/api/fiados/:id', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Vendedores (Isoladas por user_id)
+ * Rotas de Vendedores
  */
 const handleGetSellers = async (req, res) => {
     try {
@@ -725,7 +726,7 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Programação do WhatsApp (Isoladas por user_id)
+ * Rotas de Programação do WhatsApp
  */
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
     try {

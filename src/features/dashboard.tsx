@@ -125,7 +125,7 @@ import type {
 
 
 export function Dashboard({
-  sales,
+  sales = [],
   products,
   customers,
   sellers,
@@ -135,6 +135,33 @@ export function Dashboard({
   accent,
   text
 }) {
+  // Estado local de segurança para garantir persistência ao sair/entrar do painel
+  const [localSales, setLocalSales] = useState(sales);
+
+  useEffect(() => {
+    if (sales && sales.length > 0) {
+      setLocalSales(sales);
+      try {
+        localStorage.setItem("app_sales", JSON.stringify(sales));
+      } catch (e) {
+        console.error("Erro ao salvar vendas no storage", e);
+      }
+    } else {
+      // Se a prop vier vazia, tenta resgatar do cache local do navegador
+      try {
+        const savedSales = localStorage.getItem("app_sales") || localStorage.getItem("sales");
+        if (savedSales) {
+          const parsed = JSON.parse(savedSales);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLocalSales(parsed);
+          }
+        }
+      } catch (e) {
+        console.error("Erro ao recuperar vendas do storage", e);
+      }
+    }
+  }, [sales]);
+
   const today = new Date();
   today.setHours(23, 59, 59, 999);
 
@@ -183,30 +210,27 @@ export function Dashboard({
 
   const [showComm, setShowComm] = useState(false);
 
-  // Filtra as vendas rigorosamente dentro do período selecionado (com tolerância para vendas do dia atual)[cite: 12]
-  const periodSales = sales.filter((s) => {
+  // Filtro de vendas baseado em localSales para garantir robustez
+  const periodSales = localSales.filter((s) => {
     if (!s.date) return false;
-    // Se a venda for de hoje, garante que ela apareça mesmo se houver discrepância de horário UTC
     const saleDate = new Date(s.date);
-    const now = new Date();
-    const isToday = 
-      saleDate.getDate() === now.getDate() &&
-      saleDate.getMonth() === now.getMonth() &&
-      saleDate.getFullYear() === now.getFullYear();
+    if (isNaN(saleDate.getTime())) return false;
 
-    if (isToday && saleDate >= periodStart && saleDate <= periodEnd) {
-      return true;
-    }
+    const startCopy = new Date(periodStart);
+    startCopy.setHours(0, 0, 0, 0);
+    
+    const endCopy = new Date(periodEnd);
+    endCopy.setHours(23, 59, 59, 999);
 
-    return inPeriod(s.date, periodStart, periodEnd);
+    return saleDate >= startCopy && saleDate <= endCopy;
   });
   
-  // Venda Total = Apenas a soma em dinheiro das vendas realizadas no período selecionado[cite: 12]
+  // Venda Total = Soma exata das vendas filtradas no período[cite: 12, 13]
   const totalVendido = periodSales.reduce((s, v) => s + Number(v.total || 0), 0);
   
   const custoTotal = periodSales.reduce(
     (s, v) =>
-      s + (v.items && Array.isArray(v.items) ? v.items.reduce((a, it) => a + (Number(it.cost || 0) * Number(it.qty || 1)), 0) : 0),
+      s + (v.items && Array.isArray(v.items) ? v.items.reduce((a, it) => a + (Number(it.cost || 0) * Number(it.qty || it.quantity || 1)), 0) : 0),
     0
   );
   
@@ -222,29 +246,31 @@ export function Dashboard({
 
   const stockQty = products.reduce(
     (s, p) =>
-      p.controlStock
+      p.controlStock !== false
         ? s + Object.values(p.stocks || {}).reduce((a, b) => a + Number(b || 0), 0)
         : s,
     0
   );
   
   const stockCost = products.reduce((s, p) => {
-    if (!p.controlStock) return s;
+    if (p.controlStock === false) return s;
     const q = Object.values(p.stocks || {}).reduce((a, b) => a + Number(b || 0), 0);
     return s + q * Number(p.cost || 0);
   }, 0);
   
   const stockValue = products.reduce((s, p) => {
-    if (!p.controlStock) return s;
+    if (p.controlStock === false) return s;
     const q = Object.values(p.stocks || {}).reduce((a, b) => a + Number(b || 0), 0);
     return s + q * Number(p.price || 0);
   }, 0);
 
   const itemCount = {};
   periodSales.forEach((s) => {
-    if (s.items && Array.isArray(s.items)) {
-      s.items.forEach((it) => {
-        itemCount[it.name] = (itemCount[it.name] || 0) + Number(it.qty || 1);
+    const itemsList = typeof s.items === 'string' ? JSON.parse(s.items || '[]') : (s.items || []);
+    if (Array.isArray(itemsList)) {
+      itemsList.forEach((it) => {
+        const itemName = it.name || 'Produto';
+        itemCount[itemName] = (itemCount[itemName] || 0) + Number(it.qty || it.quantity || 1);
       });
     }
   });
@@ -255,7 +281,7 @@ export function Dashboard({
 
   const periodCustomers = {};
   periodSales.forEach((s) => {
-    const label = s.customer_name || (customers.find((c) => c.id === s.customer)?.name) || "Venda Balcão";
+    const label = s.customer_name || s.customerName || (customers.find((c) => c.id === s.customerId || c.id === s.customer_id)?.name) || "Venda Balcão";
     periodCustomers[label] = (periodCustomers[label] || 0) + Number(s.total || 0);
   });
 
@@ -263,9 +289,11 @@ export function Dashboard({
   const byDow = Array(7).fill(0);
   periodSales.forEach((s) => {
     const d = new Date(s.date);
-    const hi = HOUR_SLOTS.indexOf(d.getHours());
-    if (hi >= 0) byHour[hi]++;
-    if (!isNaN(d.getDay())) byDow[d.getDay()]++;
+    if (!isNaN(d.getTime())) {
+      const hi = HOUR_SLOTS.indexOf(d.getHours());
+      if (hi >= 0) byHour[hi]++;
+      if (!isNaN(d.getDay())) byDow[d.getDay()]++;
+    }
   });
 
   const peakHourIdx = byHour.indexOf(Math.max(...byHour));
