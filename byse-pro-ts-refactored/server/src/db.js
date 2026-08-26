@@ -93,6 +93,9 @@ export async function initDb() {
       commission_pct NUMERIC DEFAULT 5,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    
+    -- Garante que a coluna commission_pct exista caso a tabela já tenha sido criada antes sem ela
+    ALTER TABLE sellers ADD COLUMN IF NOT EXISTS commission_pct NUMERIC DEFAULT 5;
 
     CREATE TABLE IF NOT EXISTS fiados (
       id VARCHAR(255) PRIMARY KEY,
@@ -105,7 +108,7 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     
-    -- Garante a coluna products caso a tabela fiados já exista sem ela
+    -- Garante colunas caso a tabela fiados já exista sem elas
     ALTER TABLE fiados ADD COLUMN IF NOT EXISTS products TEXT;
     ALTER TABLE fiados ADD COLUMN IF NOT EXISTS customer_id VARCHAR(255);
     ALTER TABLE fiados ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);

@@ -145,15 +145,23 @@ function Clientes({
     }
   };
 
-  const historyFor = (custId) => {
-    const custSales = sales.filter((s) => s.customer === custId);
+  const historyFor = (customer) => {
+    const custSales = sales.filter((s) => 
+      s.customer === customer.id || 
+      s.customer === customer.name || 
+      s.customer_id === customer.id
+    );
     const totalSpent = custSales.reduce((s, v) => s + v.total, 0);
     const avgTicket = custSales.length ? totalSpent / custSales.length : 0;
     return { custSales, totalSpent, avgTicket };
   };
 
-  const daysSince = (custId) => {
-    const custSales = sales.filter((s) => s.customer === custId);
+  const daysSince = (customer) => {
+    const custSales = sales.filter((s) => 
+      s.customer === customer.id || 
+      s.customer === customer.name || 
+      s.customer_id === customer.id
+    );
     if (custSales.length === 0) return null;
     const last = custSales.reduce(
       (max, s) => (new Date(s.date) > max ? new Date(s.date) : max),
@@ -224,8 +232,8 @@ function Clientes({
 
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>
         {filtered.map((c, i) => {
-          const { custSales, totalSpent, avgTicket } = historyFor(c.id);
-          const days = daysSince(c.id);
+          const { custSales, totalSpent, avgTicket } = historyFor(c);
+          const days = daysSince(c);
           const isOpen = selected === c.id;
 
           return (

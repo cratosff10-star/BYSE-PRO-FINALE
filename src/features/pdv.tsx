@@ -181,6 +181,21 @@ export function PDV({
         onSaleCompleted();
       }
 
+      // Disparo automático do WhatsApp de Cashback para o cliente cadastrado[cite: 9]
+      if (selectedCustomer && selectedCustomer.phone) {
+        const telefoneLimpo = selectedCustomer.phone.replace(/\D/g, '');
+        if (telefoneLimpo.length >= 10) {
+          const nomeCliente = selectedCustomer.name || "Cliente";
+          const totalFormatado = total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          
+          const mensagem = encodeURIComponent(
+            `Olá, ${nomeCliente}! Obrigado pela compra de ${totalFormatado} na nossa loja! 🚀 Seu saldo de cashback foi atualizado. Aproveite na próxima visita!`
+          );
+          
+          window.open(`https://wa.me/${telefoneLimpo}?text=${mensagem}`, '_blank');
+        }
+      }
+
       alert("Venda finalizada e salva com sucesso!");
       backToGate();
     } catch (error) {

@@ -348,6 +348,10 @@ const handleGetProducts = async (req, res) => {
         
         const produtosFormatados = result.rows.map(p => ({
             ...p,
+            cost: Number(p.cost || 0),
+            price: Number(p.price || 0),
+            imposto: Number(p.imposto || 0),
+            frete: Number(p.frete || 0),
             controlStock: p.control_stock,
             vipPrice: p.vip_price,
             vipPrice3x: p.vip_price_3x,
@@ -376,10 +380,22 @@ const handlePostProduct = async (req, res) => {
                 imposto = $9, frete = $10, vip_price = $11, vip_price_3x = $12, description = $13,
                 control_stock = $14, image_url = $15, stocks = $16
         `, [
-            prodId, userId, p.name, p.category || 'Geral', p.barcode || '', p.code || '', 
-            p.cost || 0, p.price || 0, p.imposto || 0, p.frete || 0, 
-            p.vipPrice || null, p.vipPrice3x || null, p.description || '', 
-            p.controlStock !== false, p.imageUrl || null, JSON.stringify(p.stocks || {})
+            prodId, 
+            userId, 
+            p.name, 
+            p.category || 'Geral', 
+            p.barcode || '', 
+            p.code || '', 
+            parseFloat(p.cost) || 0, 
+            parseFloat(p.price) || 0, 
+            parseFloat(p.imposto) || 0, 
+            parseFloat(p.frete) || 0, 
+            p.vipPrice ? parseFloat(p.vipPrice) : null, 
+            p.vipPrice3x ? parseFloat(p.vipPrice3x) : null, 
+            p.description || '', 
+            p.controlStock !== false, 
+            p.imageUrl || null, 
+            JSON.stringify(p.stocks || {})
         ]);
 
         return res.status(201).json({ message: 'Produto salvo com sucesso', produto: p });
@@ -420,7 +436,6 @@ app.delete('/api/products/:id', authMiddleware, async (req, res) => {
 
 /**
  * Rotas de Vendas (PDV) (Isoladas por user_id)
- * Garantindo a conversão precisa de colunas e datas corretas para o frontend.
  */
 app.get('/api/sales', authMiddleware, async (req, res) => {
     try {
@@ -606,17 +621,23 @@ app.delete('/api/fiados/:id', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Vendedores
+ * Rotas de Vendedores (Com mapeamento correto de commissionPct)
  */
 const handleGetSellers = async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await pool.query(
-            'SELECT id, name, commission_pct as "commissionPct" FROM sellers WHERE user_id = $1 ORDER BY created_at ASC',
+            'SELECT id, name, commission_pct FROM sellers WHERE user_id = $1 ORDER BY created_at ASC',
             [userId]
         );
 
-        return res.status(200).json(result.rows);
+        const sellersFormatted = result.rows.map(s => ({
+            id: s.id,
+            name: s.name,
+            commissionPct: Number(s.commission_pct || 0)
+        }));
+
+        return res.status(200).json(sellersFormatted);
     } catch (error) {
         console.error('Erro ao buscar vendedores:', error);
         return res.status(200).json([]);
@@ -628,17 +649,18 @@ const handlePostSeller = async (req, res) => {
         const userId = req.user.id;
         const { id, name, commissionPct } = req.body;
         const sellerId = id || 's' + Date.now();
+        const parsedCommission = parseFloat(commissionPct) || 0;
 
         await pool.query(`
             INSERT INTO sellers (id, user_id, name, commission_pct)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (id) DO UPDATE SET
                 name = $3, commission_pct = $4
-        `, [sellerId, userId, name, commissionPct || 0]);
+        `, [sellerId, userId, name, parsedCommission]);
 
         return res.status(201).json({ 
             message: 'Vendedor salvo com sucesso', 
-            seller: { id: sellerId, name, commissionPct: Number(commissionPct || 0) } 
+            seller: { id: sellerId, name, commissionPct: parsedCommission } 
         });
     } catch (error) {
         console.error('Erro ao salvar vendedor:', error);
