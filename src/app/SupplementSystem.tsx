@@ -123,6 +123,7 @@ function SupplementSystem() {
         return () => clearInterval(interval);
     }, [user]);
 
+    // Garante o carregamento imediato do banco de dados logo na inicialização se o usuário estiver autenticado
     useEffect(() => {
         const savedToken = localStorage.getItem("byse_token");
         const savedUser = localStorage.getItem("byse_user");
@@ -131,6 +132,7 @@ function SupplementSystem() {
             try {
                 const parsedUser = JSON.parse(savedUser);
                 setUser(parsedUser);
+                setLoading(true);
                 fetchUserData().finally(() => setLoading(false));
                 return;
             } catch (error) {
@@ -146,7 +148,8 @@ function SupplementSystem() {
         if (token) localStorage.setItem("byse_token", token);
         localStorage.setItem("byse_user", JSON.stringify(userData));
         setUser(userData);
-        fetchUserData();
+        setLoading(true);
+        fetchUserData().finally(() => setLoading(false));
     };
 
     const handleLogout = () => {
@@ -288,7 +291,7 @@ function SupplementSystem() {
     if (loading) {
         return (
             <div style={{ minHeight: "100vh", background: bg, display: "flex", alignItems: "center", justifyContent: "center", color: text, fontFamily: FONT_BODY }}>
-                Carregando...
+                Carregando dados do banco...
             </div>
         );
     }
