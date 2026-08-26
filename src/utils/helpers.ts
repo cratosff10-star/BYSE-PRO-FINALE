@@ -154,10 +154,24 @@ export function getMonthGrid(year: number, month: number): (number | null)[] {
   return cells;
 }
 
-export function formatDateShort(d: Date): string {
-  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]}. ${String(d.getFullYear()).slice(2)}`;
-}
+export function formatDateShort(dateInput: string | Date | number | null | undefined): string {
+    if (!dateInput) return "";
+    
+    // Converte para objeto Date caso venha como string do banco de dados/JSON
+    const d = typeof dateInput === "string" || typeof dateInput === "number" 
+        ? new Date(dateInput) 
+        : dateInput;
 
+    // Garante que é uma data válida
+    if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+
+    return `${day}/${month}/${year}`;
+
+}
 export function formatDateBadge(d: Date): string {
   return `${WEEKDAY_SHORT[d.getDay()]}., ${d.getDate()} ${MONTH_SHORT[d.getMonth()]}. ${d.getFullYear()}`;
 }

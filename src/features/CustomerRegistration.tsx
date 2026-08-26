@@ -26,7 +26,7 @@ export function CustomerRegistration({ onSave, onCancel, card, border, text, sub
 
   return (
     <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 14, padding: 20 }}>
-      <h3 style={{ fontFamily: "inherit", fontSize: 18, marginBottom: 16 }}>Novo Cadastro de Cliente</h3>
+      <h3 style={{ fontFamily: "inherit", fontSize: 18, marginBottom: 16, color: text }}>Novo Cadastro de Cliente</h3>
       
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {/* NOME */}
@@ -89,6 +89,14 @@ export function CustomerRegistration({ onSave, onCancel, card, border, text, sub
         >
           <Save size={16} /> Salvar Cliente
         </button>
+        {onCancel && (
+          <button 
+            onClick={onCancel}
+            style={{ background: "transparent", border: `1px solid ${border}`, color: text, padding: "10px 20px", borderRadius: 8, cursor: "pointer" }}
+          >
+            Cancelar
+          </button>
+        )}
       </div>
     </div>
   );

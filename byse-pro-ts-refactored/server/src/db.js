@@ -94,6 +94,24 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS fiados (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      customer_id VARCHAR(255),
+      customer_name VARCHAR(255),
+      products TEXT,
+      origin VARCHAR(50) DEFAULT 'manual',
+      installments JSONB DEFAULT '[]',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Garante a coluna products caso a tabela fiados já exista sem ela
+    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS products TEXT;
+    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS customer_id VARCHAR(255);
+    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);
+    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS origin VARCHAR(50) DEFAULT 'manual';
+    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS installments JSONB DEFAULT '[]';
+
     -- Remove restrições de chave estrangeira caso tenham sido criadas anteriormente
     ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_user_id_fkey;
     ALTER TABLE products DROP CONSTRAINT IF EXISTS products_user_id_fkey;
@@ -101,6 +119,7 @@ export async function initDb() {
     ALTER TABLE whatsapp_schedules DROP CONSTRAINT IF EXISTS whatsapp_schedules_user_id_fkey;
     ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_user_id_fkey;
     ALTER TABLE sellers DROP CONSTRAINT IF EXISTS sellers_user_id_fkey;
+    ALTER TABLE fiados DROP CONSTRAINT IF EXISTS fiados_user_id_fkey;
 
     -- Garante a unicidade composta para o upsert das programações do WhatsApp por usuário
     ALTER TABLE whatsapp_schedules DROP CONSTRAINT IF EXISTS whatsapp_schedules_user_id_schedule_index_key;

@@ -1,22 +1,11 @@
 // @ts-nocheck
-
-const CAT_COLORS = {
-  Proteínas: { main: "#DC2626", dark: "#7F1D1D", abbr: "PRO" },
-  Creatina: { main: "#2563EB", dark: "#1E3A8A", abbr: "CRE" },
-  "Pré-treino": { main: "#0F766E", dark: "#134E4A", abbr: "PRÉ" },
-  Aminoácidos: { main: "#6B7280", dark: "#374151", abbr: "AMI" },
-  Serviços: { main: "#78716C", dark: "#44403C", abbr: "SER" },
-  Emagrecimento: { main: "#EA580C", dark: "#7C2D12", abbr: "EMA" },
-  "Saúde e bem-estar": { main: "#059669", dark: "#064E3B", abbr: "S&B" }
-};
-
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit2 } from "lucide-react";
 import { FONT_BODY } from "../data/constants";
 import { money, inputStyle, ghostBtn } from "../utils/helpers";
 import { SectionTitle, HBar } from "../components/common";
 
-function Estoque({
+export function Estoque({
   products,
   setProducts,
   stockLocations,
@@ -709,66 +698,3 @@ function Estoque({
     </div>
   );
 }
-
-function catColor(cat) {
-  return (
-    CAT_COLORS[cat] || {
-      main: "#7C3AED",
-      dark: "#4C1D95",
-      abbr: cat.slice(0, 3).toUpperCase()
-    }
-  );
-}
-
-function CatTile({ label, abbr, Icon, colors, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 10,
-        overflow: "hidden",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-        minHeight: 72
-      }}
-    >
-      <div
-        style={{
-          flex: 1,
-          background: colors.main,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-          padding: 10
-        }}
-      >
-        {Icon ? (
-          <Icon size={22} />
-        ) : (
-          <span style={{ fontFamily: FONT_DISPLAY, fontSize: 20 }}>
-            {abbr}
-          </span>
-        )}
-      </div>
-      <div
-        style={{
-          background: colors.dark,
-          color: "#fff",
-          fontSize: 9.5,
-          fontWeight: 700,
-          textAlign: "center",
-          padding: "5px 3px",
-          lineHeight: 1.2
-        }}
-      >
-        {label.toUpperCase()}
-      </div>
-    </button>
-  );
-}
-
-export { Estoque, catColor, CatTile };

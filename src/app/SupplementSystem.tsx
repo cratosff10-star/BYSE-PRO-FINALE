@@ -51,7 +51,7 @@ function SupplementSystem() {
         };
     };
 
-    // Sincronização protegida restrita ao usuário logado
+    // Sincronização protegida incluindo os Fiados do banco de dados
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
@@ -95,10 +95,28 @@ function SupplementSystem() {
                     localStorage.setItem("byse_sellers", JSON.stringify(data));
                 }
             }
+
+            const resFiados = await fetch(`${API_URL}/fiados`, { headers });
+            if (resFiados.ok) {
+                const data = await resFiados.json();
+                if (Array.isArray(data)) {
+                    setFiados(data);
+                    localStorage.setItem("byse_fiados", JSON.stringify(data));
+                }
+            }
         } catch (err) {
             console.error("Erro ao sincronizar dados com o servidor:", err);
         }
     };
+
+    // Polling em background a cada 10 segundos para manter tudo sincronizado ao vivo
+    useEffect(() => {
+        if (!user) return;
+        const interval = setInterval(() => {
+            fetchUserData();
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [user]);
 
     useEffect(() => {
         const savedToken = localStorage.getItem("byse_token");
@@ -133,6 +151,7 @@ function SupplementSystem() {
         localStorage.removeItem("byse_products");
         localStorage.removeItem("byse_sales");
         localStorage.removeItem("byse_sellers");
+        localStorage.removeItem("byse_fiados");
         setUser(null);
         setCustomers([]);
         setSales([]);
@@ -198,6 +217,31 @@ function SupplementSystem() {
         }
     };
 
+    const handleUpdateFiados = async (newFiados) => {
+        setFiados(newFiados);
+        localStorage.setItem("byse_fiados", JSON.stringify(newFiados));
+        const latestFiado = Array.isArray(newFiados) && newFiados.length > 0 ? newFiados[newFiados.length - 1] : null;
+
+        if (latestFiado) {
+            try {
+                await fetch(`${API_URL}/fiados`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        id: latestFiado.id || `fiado_${Date.now()}`,
+                        customer_id: latestFiado.customer_id || latestFiado.customerId || null,
+                        customer_name: latestFiado.customer_name || latestFiado.customerName || 'Cliente',
+                        products: latestFiado.products || latestFiado.items || [],
+                        installments: latestFiado.installments || [],
+                        origin: latestFiado.origin || 'PDV'
+                    })
+                });
+            } catch (err) {
+                console.error("Erro ao salvar fiado no banco:", err);
+            }
+        }
+    };
+
     const handleUpdateSales = async (newSales) => {
         setSales(newSales);
         localStorage.setItem("byse_sales", JSON.stringify(newSales));
@@ -210,11 +254,17 @@ function SupplementSystem() {
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
                         id: latestSale.id || `pur_${Date.now()}`,
-                        customerId: latestSale.customer || latestSale.customerId || latestSale.customer_id || null,
+                        customerId: latestSale.customer || latestSale.customer_id || latestSale.customerId || null,
+                        customer_name: latestSale.customer_name || latestSale.customerName || 'Cliente Geral',
                         total: Number(latestSale.total || 0),
+                        subtotal: Number(latestSale.subtotal || latestSale.total || 0),
+                        discount: Number(latestSale.discount || 0),
                         items: latestSale.items || [],
                         seller: latestSale.seller || null,
-                        purchasedAt: latestSale.date || new Date().toISOString()
+                        payment_method: latestSale.payment_method || latestSale.paymentMethod || 'Pix',
+                        sales_channel: latestSale.sales_channel || latestSale.salesChannel || latestSale.channel || 'Loja física',
+                        delivery_type: latestSale.delivery_type || latestSale.deliveryType || latestSale.fulfillment || 'Retirada',
+                        date: latestSale.date || new Date().toISOString()
                     })
                 });
             } catch (err) {
@@ -265,11 +315,11 @@ function SupplementSystem() {
         if (tab === "dashboard") return <Dashboard {...{ sales, products, customers, sellers, card, border, subtext, accent, text }} />;     
         if (tab === "clientes") return <Clientes customers={customers} setCustomers={handleUpdateCustomers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "estoque") return <Estoque products={products} setProducts={handleUpdateProducts} {...{ stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
-        if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} onSaleCompleted={fetchUserData} {...{ fiados, setFiados, cashbackPct, card, border, subtext, accent, text, dark }} />;     
+        if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} onSaleCompleted={fetchUserData} fiados={fiados} setFiados={handleUpdateFiados} {...{ cashbackPct, card, border, subtext, accent, text, dark }} />;     
         if (tab === "vendedores") return <Vendedores sellers={sellers} setSellers={handleUpdateSellers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
         if (tab === "cashback") return <Cashback customers={customers} setCustomers={handleUpdateCustomers} {...{ cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     
-        if (tab === "fiados") return <Fiados {...{ fiados, setFiados, customers, card, border, subtext, accent, text }} />;     
+        if (tab === "fiados") return <Fiados fiados={fiados} setFiados={handleUpdateFiados} {...{ customers, card, border, subtext, accent, text }} />;     
         if (tab === "whatsapp") return <WhatsApp {...{ waSchedule, setWaSchedule, cashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "trafego") return <TrafegoPago {...{ adEntries, setAdEntries, sales, card, border, subtext, accent, text }} />;     
         if (tab === "canais") return <CanaisDeVenda {...{ sales, setSales, card, border, subtext, accent, text }} />;     

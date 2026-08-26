@@ -1,7 +1,6 @@
 // @ts-nocheck
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
 import {
   Users,
   Package,
@@ -112,17 +111,7 @@ import {
   VipWelcome
 } from "../components/common";
 
-import type {
-  Product,
-  Customer,
-  Seller,
-  Sale,
-  StockLocation,
-  AdEntry,
-  WaScheduleEntry,
-  WelcomeConfig
-} from "../types";
-
+const API_URL = "http://localhost:3333/api";
 
 function Fiados({
   fiados,
@@ -140,12 +129,21 @@ function Fiados({
   const [value, setValue] = useState("");
   const [dueDate, setDueDate] = useState("");
 
-  const add = () => {
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("byse_token");
+    return {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    };
+  };
+
+  const add = async () => {
     if (!customerId || !value) return;
     const c = customers.find((c) => c.id === customerId);
     const d = dueDate
       ? new Date(dueDate + "T12:00:00")
       : new Date();
+    
     const item = {
       id: "fd" + Date.now(),
       customerId,
@@ -155,36 +153,80 @@ function Fiados({
       origin: "manual",
       installments: [{ value: Number(value) || 0, dueDate: d, paid: false }]
     };
-    setFiados((prev) => [...prev, item]);
+
+    const updated = [...fiados, item];
+    setFiados(updated);
+
+    try {
+      await fetch(`${API_URL}/fiados`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(item)
+      });
+    } catch (err) {
+      console.error("Erro ao salvar fiado no servidor:", err);
+    }
+
     setShowForm(false);
     setProducts("");
     setValue("");
     setDueDate("");
   };
 
-  const toggle = (id) =>
-    setFiados((prev) =>
-      prev.map((f) =>
-        f.id === id
-          ? {
-              ...f,
-              installments: f.installments.map((i, idx) =>
-                idx === 0 ? { ...i, paid: !i.paid } : i
-              )
-            }
-          : f
-      )
+  const toggle = async (id) => {
+    const updated = fiados.map((f) =>
+      f.id === id
+        ? {
+            ...f,
+            installments: f.installments.map((i, idx) =>
+              idx === 0 ? { ...i, paid: !i.paid } : i
+            )
+          }
+        : f
     );
+    setFiados(updated);
 
-  const deleteFiado = (id) => {
-    if (confirm("Tem certeza que deseja excluir este fiado?")) {
-      setFiados((prev) => prev.filter((f) => f.id !== id));
+    const target = updated.find(f => f.id === id);
+    if (target) {
+      try {
+        await fetch(`${API_URL}/fiados`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(target)
+        });
+      } catch (err) {
+        console.error("Erro ao atualizar status do fiado:", err);
+      }
     }
   };
 
-  const clearAllFiados = () => {
+  const deleteFiado = async (id) => {
+    if (confirm("Tem certeza que deseja excluir este fiado?")) {
+      const updated = fiados.filter((f) => f.id !== id);
+      setFiados(updated);
+
+      try {
+        await fetch(`${API_URL}/fiados/${id}`, {
+          method: "DELETE",
+          headers: getAuthHeaders()
+        });
+      } catch (err) {
+        console.error("Erro ao excluir fiado:", err);
+      }
+    }
+  };
+
+  const clearAllFiados = async () => {
     if (confirm("Tem certeza que deseja excluir TODOS os fiados? Esta ação não pode ser desfeita.")) {
       setFiados([]);
+      for (const f of fiados) {
+        try {
+          await fetch(`${API_URL}/fiados/${f.id}`, {
+            method: "DELETE",
+            headers: getAuthHeaders()
+          });
+        } catch (err) {}
+      }
     }
   };
 
@@ -285,7 +327,8 @@ function Fiados({
               border: "none",
               borderRadius: 8,
               padding: "9px 14px",
-              fontWeight: 700
+              fontWeight: 700,
+              cursor: "pointer"
             }}
           >
             Salvar
@@ -308,11 +351,11 @@ function Fiados({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <strong>{f.customerName}</strong>
+                <strong>{f.customerName || f.customer_name}</strong>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontWeight: 700 }}>
                     {money(
-                      f.installments.reduce((a, i) => a + i.value, 0)
+                      (f.installments || []).reduce((a, i) => a + Number(i.value || 0), 0)
                     )}
                   </span>
                   <button
@@ -341,7 +384,7 @@ function Fiados({
                 {f.products || "Sem descrição"}
               </div>
 
-              {f.installments.map((i, idx) => (
+              {(f.installments || []).map((i, idx) => (
                 <div
                   key={idx}
                   style={{

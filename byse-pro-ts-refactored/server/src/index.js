@@ -27,7 +27,6 @@ app.post('/api/login', async (req, res) => {
 
         let user;
         if (result.rows.length === 0) {
-            // Se o usuário não existir no banco, cria um registro padrão para evitar erros de FK
             const newId = '1787335620584';
             const hashedPassword = await bcrypt.hash(password || '123456', 10);
             
@@ -531,6 +530,77 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         return res.status(500).json({ error: 'Erro interno ao salvar a venda no banco.' });
     } finally {
         client.release();
+    }
+});
+
+/**
+ * Rotas de Fiados / Crediário (Atualizadas e compatíveis com o componente front-end)
+ */
+app.get('/api/fiados', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query(
+            'SELECT * FROM fiados WHERE user_id = $1 ORDER BY created_at DESC',
+            [userId]
+        );
+
+        const fiadosFormatted = result.rows.map(f => ({
+            id: f.id,
+            customerId: f.customer_id,
+            customer_id: f.customer_id,
+            customerName: f.customer_name,
+            customer_name: f.customer_name,
+            products: f.products || '',
+            origin: f.origin || 'manual',
+            installments: typeof f.installments === 'string' ? JSON.parse(f.installments || '[]') : (f.installments || []),
+            date: f.created_at
+        }));
+
+        return res.status(200).json(fiadosFormatted);
+    } catch (error) {
+        console.error('Erro ao buscar fiados:', error);
+        return res.status(200).json([]);
+    }
+});
+
+app.post('/api/fiados', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const f = req.body;
+        const fiadoId = f.id || `fd_${Date.now()}`;
+        const installments = typeof f.installments === 'string' ? JSON.parse(f.installments || '[]') : (f.installments || []);
+
+        await pool.query(`
+            INSERT INTO fiados (id, user_id, customer_id, customer_name, products, origin, installments)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO UPDATE SET
+                customer_id = $3, customer_name = $4, products = $5, origin = $6, installments = $7
+        `, [
+            fiadoId,
+            userId,
+            f.customerId || f.customer_id || null,
+            f.customerName || f.customer_name || 'Cliente',
+            f.products || '',
+            f.origin || 'manual',
+            JSON.stringify(installments)
+        ]);
+
+        return res.status(201).json({ message: 'Fiado salvo com sucesso!', fiadoId });
+    } catch (error) {
+        console.error('Erro ao salvar fiado:', error);
+        return res.status(500).json({ error: 'Erro interno ao salvar o fiado no banco.' });
+    }
+});
+
+app.delete('/api/fiados/:id', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const fiadoId = req.params.id;
+        await pool.query('DELETE FROM fiados WHERE id = $1 AND user_id = $2', [fiadoId, userId]);
+        return res.status(200).json({ message: 'Fiado removido com sucesso' });
+    } catch (error) {
+        console.error('Erro ao remover fiado:', error);
+        return res.status(500).json({ error: 'Erro interno ao remover fiado' });
     }
 });
 

@@ -363,15 +363,16 @@ function CanaisDeVenda({
   accent,
   text
 }) {
-  const totalRevenue = sales.reduce((s, v) => s + v.total, 0);
+  const totalRevenue = sales.reduce((s, v) => s + Number(v.total || 0), 0);
 
   const byChannel = CHANNELS.map((ch) => {
+    // CORRIGIDO: Lê sales_channel do backend (com fallback para channel ou 'Loja física')
     const chSales = sales.filter(
-      (s) => (s.channel || "Loja física") === ch
+      (s) => (s.sales_channel || s.salesChannel || s.channel || "Loja física") === ch
     );
-    const revenue = chSales.reduce((s, v) => s + v.total, 0);
+    const revenue = chSales.reduce((s, v) => s + Number(v.total || 0), 0);
     const uniqueCustomers = new Set(
-      chSales.map((s) => s.customer).filter(Boolean)
+      chSales.map((s) => s.customer_name || s.customerName || s.customer).filter(Boolean)
     ).size;
     return {
       channel: ch,
@@ -390,7 +391,8 @@ function CanaisDeVenda({
 
   const fulfillmentCounts = {};
   sales.forEach((s) => {
-    const f = s.fulfillment || "Retirada";
+    // CORRIGIDO: Lê delivery_type do backend
+    const f = s.delivery_type || s.deliveryType || s.fulfillment || "Retirada";
     fulfillmentCounts[f] = (fulfillmentCounts[f] || 0) + 1;
   });
 
