@@ -260,11 +260,8 @@ app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
                     })
                 });
 
-                const responseData = await response.json();
                 if (response.ok) {
                     enviados++;
-                } else {
-                    console.error(`Erro retornado pela Evolution API para ${phoneClean}:`, responseData);
                 }
             } catch (err) {
                 console.error(`Erro de conexão ao disparar mensagem para ${phoneClean}:`, err);
@@ -279,12 +276,12 @@ app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Clientes (Isoladas por user_id)
+ * Rotas de Clientes (Isoladas por user_id) - Atualizadas para persistir status e campos adicionais
  */
 const handleGetCustomers = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, phone FROM customers WHERE user_id = $1',
+            'SELECT id, name, phone, cpf, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade FROM customers WHERE user_id = $1',
             [req.user.id]
         );
         return res.status(200).json(result.rows);
@@ -297,17 +294,36 @@ const handleGetCustomers = async (req, res) => {
 const handlePostCustomer = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { id, name, phone } = req.body;
+        const { id, name, phone, cpf, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade } = req.body;
         const clienteId = id || 'c' + Date.now();
         
         await pool.query(
-            `INSERT INTO customers (id, user_id, name, phone) 
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (id) DO UPDATE SET name = $3, phone = $4`,
-            [clienteId, userId, name, phone || '']
+            `INSERT INTO customers (id, user_id, name, phone, cpf, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (id) DO UPDATE SET 
+                name = $3, 
+                phone = $4, 
+                cpf = COALESCE($5, customers.cpf),
+                cashback = COALESCE($6, customers.cashback),
+                status = COALESCE($7, customers.status),
+                status_mensalidade = COALESCE($8, customers.status_mensalidade), 
+                data_vencimento = COALESCE($9, customers.data_vencimento), 
+                valor_mensalidade = COALESCE($10, customers.valor_mensalidade)`,
+            [
+                clienteId, 
+                userId, 
+                name, 
+                phone || '', 
+                cpf || '', 
+                cashback || 0, 
+                status || 'Ativo', 
+                status_mensalidade || 'Pendente (Não Pago)', 
+                data_vencimento || null, 
+                valor_mensalidade || 0
+            ]
         );
 
-        const clienteData = { id: clienteId, userId, name, phone: phone || '' };
+        const clienteData = { id: clienteId, userId, name, phone: phone || '', status: status || 'Ativo' };
         return res.status(201).json({ message: 'Cliente salvo', cliente: clienteData });
     } catch (error) {
         console.error('Erro ao salvar cliente:', error);
@@ -621,7 +637,7 @@ app.delete('/api/fiados/:id', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Vendedores (Com mapeamento correto de commissionPct)
+ * Rotas de Vendedores
  */
 const handleGetSellers = async (req, res) => {
     try {
@@ -744,6 +760,135 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('Erro ao gerenciar locais:', error);
         return res.status(500).json({ error: 'Erro interno ao salvar local' });
+    }
+});
+
+/**
+ * Rotas de Pré-Treino (Isoladas por user_id) - Produtos e Registros
+ */
+app.get('/api/pre-treino/products', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query(
+            'SELECT id, name, cost FROM pre_treino_produtos WHERE user_id = $1',
+            [userId]
+        );
+        if (result.rows.length === 0) {
+            const defaultProds = [
+                { id: 'p1', name: 'Dragon Pharma (Dose)', cost: 5.00 },
+                { id: 'p2', name: 'Insane Labz (Dose)', cost: 6.00 }
+            ];
+            for (const p of defaultProds) {
+                await pool.query(
+                    'INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
+                    [p.id, userId, p.name, p.cost]
+                );
+            }
+            return res.status(200).json(defaultProds.map(p => ({ ...p, custo: p.cost })));
+        }
+        return res.status(200).json(result.rows.map(p => ({ 
+            id: p.id,
+            name: p.name,
+            cost: Number(p.cost || 0),
+            custo: Number(p.cost || 0) 
+        })));
+    } catch (error) {
+        console.error('Erro ao buscar produtos de pré-treino:', error);
+        return res.status(500).json({ error: 'Erro interno' });
+    }
+});
+
+app.post('/api/pre-treino/products', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id, name, cost, custo } = req.body;
+        const finalCost = cost !== undefined ? cost : (custo !== undefined ? custo : 0);
+        const prodId = id || 'pt_prod_' + Date.now();
+        await pool.query(
+            `INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4)
+             ON CONFLICT (id) DO UPDATE SET name = $3, cost = $4`,
+            [prodId, userId, name, parseFloat(finalCost) || 0]
+        );
+        return res.status(201).json({ message: 'Produto de pré-treino salvo!' });
+    } catch (error) {
+        console.error('Erro ao salvar produto de pré-treino:', error);
+        return res.status(500).json({ error: 'Erro interno' });
+    }
+});
+
+// Rota de exclusão para Produtos de Pré-Treino (Integrada ao Banco e com validação de usuário)
+app.delete('/api/pre-treino/products/:id', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const produtoId = req.params.id;
+        await pool.query('DELETE FROM pre_treino_produtos WHERE id = $1 AND user_id = $2', [produtoId, userId]);
+        return res.status(200).json({ message: 'Produto de pré-treino excluído com sucesso.' });
+    } catch (error) {
+        console.error('Erro ao excluir produto de pré-treino:', error);
+        return res.status(500).json({ error: 'Erro ao excluir produto de pré-treino.' });
+    }
+});
+
+app.get('/api/pre-treino/records', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query(
+            'SELECT id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horário FROM pre_treino_registros WHERE user_id = $1 ORDER BY created_at DESC',
+            [userId]
+        );
+        const formatted = result.rows.map(r => ({
+            id: r.id,
+            customerId: r.customer_id,
+            customerName: r.nome_cliente,
+            productId: r.produto_id,
+            productName: r.nome_produto,
+            cost: Number(r.custo || 0),
+            price: Number(r.custo || 0),
+            date: r.data || new Date().toISOString(),
+            horario: r.horário
+        }));
+        return res.status(200).json(formatted);
+    } catch (error) {
+        console.error('Erro ao buscar registros de pré-treino:', error);
+        return res.status(500).json({ error: 'Erro interno' });
+    }
+});
+
+app.post('/api/pre-treino/records', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const r = req.body;
+        const recordId = r.id || 'pt_rec_' + Date.now();
+        const customerId = r.customerId || r.customer_id || null;
+        const nomeCliente = r.customerName || r.nome_cliente || 'Cliente';
+        const produtoId = r.productId || r.produto_id || '';
+        const nomeProduto = r.productName || r.nome_produto || '';
+        const custo = Number(r.cost !== undefined ? r.cost : (r.custo !== undefined ? r.custo : 0));
+        const data = r.date || r.data || new Date().toISOString().split('T')[0];
+        const horario = r.horario || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+        await pool.query(
+            `INSERT INTO pre_treino_registros (id, user_id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horário)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (id) DO UPDATE SET customer_id = $3, nome_cliente = $4, produto_id = $5, nome_produto = $6, custo = $7, data = $8, horário = $9`,
+            [recordId, userId, customerId, nomeCliente, produtoId, nomeProduto, custo, data, horario]
+        );
+        return res.status(201).json({ message: 'Registro de pré-treino salvo!' });
+    } catch (error) {
+        console.error('Erro ao salvar registro de pré-treino:', error);
+        return res.status(500).json({ error: 'Erro interno' });
+    }
+});
+
+app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const recordId = req.params.id;
+        await pool.query('DELETE FROM pre_treino_registros WHERE id = $1 AND user_id = $2', [recordId, userId]);
+        return res.status(200).json({ message: 'Registro removido com sucesso' });
+    } catch (error) {
+        console.error('Erro ao remover registro de pré-treino:', error);
+        return res.status(500).json({ error: 'Erro interno' });
     }
 });
 

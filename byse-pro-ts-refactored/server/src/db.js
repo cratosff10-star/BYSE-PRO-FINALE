@@ -27,8 +27,14 @@ export async function initDb() {
       user_id VARCHAR(255),
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL,
+      cpf VARCHAR(50),
+      cashback NUMERIC DEFAULT 0,
+      status VARCHAR(100) DEFAULT 'Ativo',
       whatsapp_opt_in INT DEFAULT 0,
       reminders_enabled INT DEFAULT 1,
+      status_mensalidade VARCHAR(100) DEFAULT 'Pendente (Não Pago)',
+      data_vencimento DATE,
+      valor_mensalidade NUMERIC DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -66,7 +72,8 @@ export async function initDb() {
       message_template TEXT,
       send_to_all BOOLEAN DEFAULT TRUE,
       customer_ids TEXT[],
-      enabled BOOLEAN DEFAULT FALSE
+      enabled BOOLEAN DEFAULT FALSE,
+      CONSTRAINT unique_user_schedule UNIQUE (user_id, schedule_index)
     );
 
     CREATE TABLE IF NOT EXISTS sales (
@@ -94,7 +101,6 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     
-    -- Garante que a coluna commission_pct exista caso a tabela já tenha sido criada antes sem ela
     ALTER TABLE sellers ADD COLUMN IF NOT EXISTS commission_pct NUMERIC DEFAULT 5;
 
     CREATE TABLE IF NOT EXISTS fiados (
@@ -107,33 +113,44 @@ export async function initDb() {
       installments JSONB DEFAULT '[]',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    
-    -- Garante colunas caso a tabela fiados já exista sem elas
-    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS products TEXT;
-    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS customer_id VARCHAR(255);
-    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);
-    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS origin VARCHAR(50) DEFAULT 'manual';
-    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS installments JSONB DEFAULT '[]';
 
-    -- Remove restrições de chave estrangeira caso tenham sido criadas anteriormente
-    ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_user_id_fkey;
-    ALTER TABLE products DROP CONSTRAINT IF EXISTS products_user_id_fkey;
-    ALTER TABLE stock_locations DROP CONSTRAINT IF EXISTS stock_locations_user_id_fkey;
-    ALTER TABLE whatsapp_schedules DROP CONSTRAINT IF EXISTS whatsapp_schedules_user_id_fkey;
-    ALTER TABLE sales DROP CONSTRAINT IF EXISTS sales_user_id_fkey;
-    ALTER TABLE sellers DROP CONSTRAINT IF EXISTS sellers_user_id_fkey;
-    ALTER TABLE fiados DROP CONSTRAINT IF EXISTS fiados_user_id_fkey;
+    -- Tabelas para Pré-Treino, Produtos de Pré-Treino e Registros de Consumo
+    CREATE TABLE IF NOT EXISTS pre_treino (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      exercises JSONB DEFAULT '[]',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-    -- Garante a unicidade composta para o upsert das programações do WhatsApp por usuário
-    ALTER TABLE whatsapp_schedules DROP CONSTRAINT IF EXISTS whatsapp_schedules_user_id_schedule_index_key;
-    ALTER TABLE whatsapp_schedules ADD CONSTRAINT whatsapp_schedules_user_id_schedule_index_key UNIQUE (user_id, schedule_index);
+    CREATE TABLE IF NOT EXISTS pre_treino_produtos (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      cost NUMERIC DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-    ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_to_all BOOLEAN DEFAULT TRUE;
-    ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS customer_ids TEXT[];
-    ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE;
-    ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS days_of_week TEXT[];
-    ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS send_time TIME;
-    ALTER TABLE whatsapp_schedules ADD COLUMN IF NOT EXISTS message_template TEXT;
+    CREATE TABLE IF NOT EXISTS pre_treino_registros (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      customer_id VARCHAR(255) REFERENCES customers(id) ON DELETE CASCADE,
+      nome_cliente VARCHAR(255),
+      produto_id VARCHAR(255) REFERENCES pre_treino_produtos(id) ON DELETE CASCADE,
+      nome_produto VARCHAR(255),
+      custo NUMERIC DEFAULT 0,
+      data VARCHAR(50),
+      horario VARCHAR(50),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS status_mensalidade VARCHAR(100) DEFAULT 'Pendente (Não Pago)';
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_vencimento DATE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS valor_mensalidade NUMERIC DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cpf VARCHAR(50);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback NUMERIC DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS status VARCHAR(100) DEFAULT 'Ativo';
   `);
   console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
 }

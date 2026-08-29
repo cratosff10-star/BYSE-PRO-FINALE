@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState } from "react";
-import { Search, X, UserPlus, ShoppingCart, ArrowLeft } from "lucide-react";
+import { Search, X, UserPlus, ShoppingCart, ArrowLeft, RotateCcw } from "lucide-react";
 import { inputStyle, lbl } from "../utils/helpers";
 import { SectionTitle } from "../components/common";
 import { CustomerRegistration } from "./CustomerRegistration";
@@ -26,6 +26,9 @@ export function PDV({
   const [phoneQuery, setPhoneQuery] = useState("");
   const [foundCustomer, setFoundCustomer] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  
+  // Estado para armazenar a última venda concluída e permitir emissão de comprovante
+  const [lastCompletedSale, setLastCompletedSale] = useState(null);
 
   // Estados do Pedido / Venda
   const [productQuery, setProductQuery] = useState("");
@@ -103,6 +106,8 @@ export function PDV({
     setSelectedCustomer(null);
     setCart([]);
     setProductQuery("");
+    setLastCompletedSale(null);
+    setDiscount(0);
   };
 
   const addToCart = (prod) => {
@@ -130,6 +135,69 @@ export function PDV({
 
   const subtotal = cart.reduce((acc, item) => acc + (Number(item.price) || 0) * item.qty, 0);
   const total = Math.max(0, subtotal - Number(discount));
+
+  // Função de comprovante otimizada e mais compacta
+  const generateReceiptText = (saleData) => {
+    const itemsText = saleData.items
+      .map(i => `${i.qty}x ${i.name} - ${(Number(i.price) * i.qty).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`)
+      .join("\n");
+
+    return `
+-- COMPROVANTE --
+Data: ${new Date(saleData.date).toLocaleString("pt-BR")}
+Cli: ${saleData.customer_name}
+Vend: ${saleData.seller}
+--------------------------------
+ITENS:
+${itemsText}
+--------------------------------
+Subtotal: ${saleData.subtotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+Desconto: ${saleData.discount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+TOTAL: ${saleData.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+Pagto: ${saleData.payment_method}
+--------------------------------
+Obrigado pela preferência!
+    `.trim();
+  };
+
+  const handlePrintReceipt = (saleData) => {
+    const receiptContent = generateReceiptText(saleData);
+    const printWindow = window.open("", "_blank", "width=320,height=500");
+    
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Comprovante</title>
+            <style>
+              body { 
+                font-family: monospace; 
+                white-space: pre-wrap; 
+                padding: 5px; 
+                margin: 0;
+                font-size: 11px; 
+                line-height: 1.2;
+              }
+            </style>
+          </head>
+          <body>
+            ${receiptContent}
+            <script>
+              window.onload = function() {
+                window.print();
+                window.close();
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
+
+  const handleDownloadPDF = (saleData) => {
+    handlePrintReceipt(saleData);
+  };
 
   const finalizeSale = async () => {
     if (cart.length === 0) {
@@ -176,12 +244,12 @@ export function PDV({
         setSales([...sales, newSale]);
       }
 
-      // Sincroniza e atualiza o estoque/dados imediatamente na tela principal
       if (typeof onSaleCompleted === "function") {
         onSaleCompleted();
       }
 
-      // Disparo automático do WhatsApp de Cashback para o cliente cadastrado[cite: 9]
+      setLastCompletedSale(newSale);
+
       if (selectedCustomer && selectedCustomer.phone) {
         const telefoneLimpo = selectedCustomer.phone.replace(/\D/g, '');
         if (telefoneLimpo.length >= 10) {
@@ -197,7 +265,6 @@ export function PDV({
       }
 
       alert("Venda finalizada e salva com sucesso!");
-      backToGate();
     } catch (error) {
       console.error(error);
       alert("Erro ao conectar com o servidor para salvar a venda. Verifique se a API está rodando.");
@@ -763,11 +830,71 @@ export function PDV({
                 borderRadius: 8,
                 width: "100%",
                 fontWeight: "bold",
-                cursor: "pointer"
+                cursor: "pointer",
+                marginBottom: 10
               }}
             >
               Finalizar venda
             </button>
+
+            {/* Opções de Comprovante e Retorno ao Início após finalizar */}
+            {lastCompletedSale && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => handlePrintReceipt(lastCompletedSale)}
+                    style={{
+                      flex: 1,
+                      background: "transparent",
+                      color: text,
+                      border: `1px solid ${border}`,
+                      padding: 8,
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: "bold"
+                    }}
+                  >
+                    🖨️ Imprimir
+                  </button>
+                  <button
+                    onClick={() => handleDownloadPDF(lastCompletedSale)}
+                    style={{
+                      flex: 1,
+                      background: "transparent",
+                      color: text,
+                      border: `1px solid ${border}`,
+                      padding: 8,
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: "bold"
+                    }}
+                  >
+                    📄 Gerar PDF
+                  </button>
+                </div>
+                <button
+                  onClick={backToGate}
+                  style={{
+                    background: accent,
+                    color: "#fff",
+                    border: "none",
+                    padding: 10,
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6
+                  }}
+                >
+                  <RotateCcw size={15} /> Realizar Nova Venda
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

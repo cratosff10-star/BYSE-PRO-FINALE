@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useState } from "react";
-import { Users, Package, ShoppingCart, BarChart3, Store, MessageCircle, Gift, Printer, Plus, Search, Moon, Sun, Trash2, X, ChevronRight, ChevronLeft, Award, Percent, Eye, EyeOff, Edit2, Check, User, Lock, Menu, Bell, Clipboard, MoreVertical, Tag, Heart, ScanLine, List, History, LayoutGrid, TrendingUp, Share2, Calculator, CreditCard, Truck, Video, Music, Type, Mail, Wallet, Banknote, Save, LogOut } from "lucide-react";
+import { Users, Package, ShoppingCart, BarChart3, Store, MessageCircle, Gift, Printer, Plus, Search, Moon, Sun, Trash2, X, ChevronRight, ChevronLeft, Award, Percent, Eye, EyeOff, Edit2, Check, User, Lock, Menu, Bell, Clipboard, MoreVertical, Tag, Heart, ScanLine, List, History, LayoutGrid, TrendingUp, Share2, Calculator, CreditCard, Truck, Video, Music, Type, Mail, Wallet, Banknote, Save, LogOut, Calendar } from "lucide-react";
 import { FONT_BODY, FONT_DISPLAY, SUCCESS, DANGER, GLOBAL_CSS, PRESET_COLORS } from "../data/constants";
 import { money, genNoiseSales, genAdEntries, inPeriod } from "../utils/helpers";
 import { LoginScreen, VipWelcome, MenuGridScreen, LogoMark, SLabel } from "../components/common";
@@ -15,6 +15,7 @@ import { WhatsApp } from "../features/whatsapp";
 import { TrafegoPago, CanaisDeVenda } from "../features/marketing"; 
 import { DRE, Planos } from "../features/finance"; 
 import { Fiados } from "../features/fiados";
+import { PreTreino } from "../features/preTreino";
 
     // Garante que se a URL terminar com '/', removemos, e se não tiver '/api', nós adicionamos automaticamente
     const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:3333";
@@ -37,10 +38,17 @@ function SupplementSystem() {
     const [adEntries, setAdEntries] = useState([]);
     const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);
 
+    // Estados de pré-treino com persistência
+    const [preTreinoProducts, setPreTreinoProducts] = useState([
+        { id: 'p1', name: 'Dragon Pharma (Dose)', custo: 5.00 },
+        { id: 'p2', name: 'Insane Labz (Dose)', custo: 6.00 }
+    ]);
+    const [preTreinoRecords, setPreTreinoRecords] = useState([]);
+
     const [cashbackPct, setCashbackPct] = useState(3);   
     const [cashbackValidityDays, setCashbackValidityDays] = useState(90);   
     const [waSchedule, setWaSchedule] = useState([     
-      { id: 1, label: "Lembrete de saldo cashback", day: "Toda sexta-feira", enabled: true, text: "Oi {nome}, você tem {saldo} em cashback esperando! 🎁" },     
+      { id: 1, label: "Lembrete de saldo cashback", day: "Toda sexta-feira", enabled: true, text: "Oi {nome}, você tem {saldo} en cashback esperando! 🎁" },     
       { id: 2, label: "Promoção do mês", day: "Dia 5 de cada mês", enabled: true, text: "Oi {nome}! Temos novidades e promoções especiais esse mês na loja. 💪" },     
       { id: 3, label: "Cliente sumido (30 dias sem comprar)", day: "Dia 15 de cada mês", enabled: false, text: "Sentimos sua falta, {nome}! Faz tempo que você não aparece por aqui." },   
     ]);    
@@ -53,7 +61,7 @@ function SupplementSystem() {
         };
     };
 
-    // Sincronização protegida incluindo os Fiados do banco de dados e normalização segura de vendas
+    // Sincronização protegida incluindo Pré-Treino do banco de dados (imutável contra alterações locais indesejadas)
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
@@ -62,7 +70,7 @@ function SupplementSystem() {
             if (resCustomers.ok) {
                 const data = await resCustomers.json();
                 if (Array.isArray(data)) {
-                    setCustomers(data);
+                    setCustomers([...data]);
                     localStorage.setItem("byse_customers", JSON.stringify(data));
                 }
             }
@@ -78,7 +86,7 @@ function SupplementSystem() {
                         customerName: s.customerName || s.customer_name || 'Cliente Geral',
                         customer_name: s.customer_name || s.customerName || 'Cliente Geral'
                     }));
-                    setSales(normalizedSales);
+                    setSales([...normalizedSales]);
                     localStorage.setItem("byse_sales", JSON.stringify(normalizedSales));
                 }
             }
@@ -87,7 +95,7 @@ function SupplementSystem() {
             if (resProducts.ok) {
                 const data = await resProducts.json();
                 if (Array.isArray(data)) {
-                    setProducts(data);
+                    setProducts([...data]);
                     localStorage.setItem("byse_products", JSON.stringify(data));
                 }
             }
@@ -96,7 +104,7 @@ function SupplementSystem() {
             if (resSellers.ok) {
                 const data = await resSellers.json();
                 if (Array.isArray(data)) {
-                    setSellers(data);
+                    setSellers([...data]);
                     localStorage.setItem("byse_sellers", JSON.stringify(data));
                 }
             }
@@ -105,8 +113,26 @@ function SupplementSystem() {
             if (resFiados.ok) {
                 const data = await resFiados.json();
                 if (Array.isArray(data)) {
-                    setFiados(data);
+                    setFiados([...data]);
                     localStorage.setItem("byse_fiados", JSON.stringify(data));
+                }
+            }
+
+            // Sincronização Pré-Treino Produtos
+            const resPtProds = await fetch(`${API_URL}/pre-treino/products`, { headers });
+            if (resPtProds.ok) {
+                const data = await resPtProds.json();
+                if (Array.isArray(data)) {
+                    setPreTreinoProducts([...data]);
+                }
+            }
+
+            // Sincronização Pré-Treino Registros
+            const resPtRecs = await fetch(`${API_URL}/pre-treino/records`, { headers });
+            if (resPtRecs.ok) {
+                const data = await resPtRecs.json();
+                if (Array.isArray(data)) {
+                    setPreTreinoRecords([...data]);
                 }
             }
         } catch (err) {
@@ -166,73 +192,90 @@ function SupplementSystem() {
         setProducts([]);
         setSellers([]);
         setFiados([]);
+        setPreTreinoRecords([]);
     };
 
-    const handleUpdateCustomers = (newCustomers) => {
-        setCustomers(newCustomers);
-        localStorage.setItem("byse_customers", JSON.stringify(newCustomers));
+    const handleUpdateCustomers = async (newCustomers) => {
         const latestCustomer = Array.isArray(newCustomers) && newCustomers.length > 0 ? newCustomers[newCustomers.length - 1] : null;
         
         if (latestCustomer) {
-            fetch(`${API_URL}/customers`, {
-                method: "POST",
-                headers: getAuthHeaders(),
-                body: JSON.stringify({
-                    id: latestCustomer.id || `cli_${Date.now()}`,
-                    name: latestCustomer.name,
-                    phone: latestCustomer.phone,
-                    cpf: latestCustomer.cpf || "",
-                    cashback: latestCustomer.cashback || 0
-                })
-            }).catch(err => console.error("Erro ao salvar cliente no banco:", err));
+            try {
+                const response = await fetch(`${API_URL}/customers`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        id: latestCustomer.id || `cli_${Date.now()}`,
+                        name: latestCustomer.name,
+                        phone: latestCustomer.phone,
+                        cpf: latestCustomer.cpf || "",
+                        cashback: latestCustomer.cashback || 0
+                    })
+                });
+                if (response.ok) {
+                    setCustomers([...newCustomers]);
+                    localStorage.setItem("byse_customers", JSON.stringify(newCustomers));
+                }
+            } catch (err) {
+                console.error("Erro ao salvar cliente no banco:", err);
+            }
         }
     };
 
-    const handleUpdateProducts = (newProducts) => {
-        setProducts(newProducts);
-        localStorage.setItem("byse_products", JSON.stringify(newProducts));
+    const handleUpdateProducts = async (newProducts) => {
         const latestProduct = Array.isArray(newProducts) && newProducts.length > 0 ? newProducts[newProducts.length - 1] : null;
 
         if (latestProduct) {
-            fetch(`${API_URL}/products`, {
-                method: "POST",
-                headers: getAuthHeaders(),
-                body: JSON.stringify({
-                    id: latestProduct.id || `prod_${Date.now()}`,
-                    name: latestProduct.name,
-                    category: latestProduct.category || "Geral",
-                    price: Number(latestProduct.price || 0),
-                    barcode: latestProduct.barcode || ""
-                })
-            }).catch(err => console.error("Erro ao salvar produto no banco:", err));
+            try {
+                const response = await fetch(`${API_URL}/products`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        id: latestProduct.id || `prod_${Date.now()}`,
+                        name: latestProduct.name,
+                        category: latestProduct.category || "Geral",
+                        price: Number(latestProduct.price || 0),
+                        barcode: latestProduct.barcode || ""
+                    })
+                });
+                if (response.ok) {
+                    setProducts([...newProducts]);
+                    localStorage.setItem("byse_products", JSON.stringify(newProducts));
+                }
+            } catch (err) {
+                console.error("Erro ao salvar produto no banco:", err);
+            }
         }
     };
 
-    const handleUpdateSellers = (newSellers) => {
-        setSellers(newSellers);
-        localStorage.setItem("byse_sellers", JSON.stringify(newSellers));
+    const handleUpdateSellers = async (newSellers) => {
         const latestSeller = Array.isArray(newSellers) && newSellers.length > 0 ? newSellers[newSellers.length - 1] : null;
 
         if (latestSeller) {
-            fetch(`${API_URL}/sellers`, {
-                method: "POST",
-                headers: getAuthHeaders(),
-                body: JSON.stringify({
-                    id: latestSeller.id || `sel_${Date.now()}`,
-                    name: latestSeller.name
-                })
-            }).catch(err => console.error("Erro ao salvar vendedor no banco:", err));
+            try {
+                const response = await fetch(`${API_URL}/sellers`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        id: latestSeller.id || `sel_${Date.now()}`,
+                        name: latestSeller.name
+                    })
+                });
+                if (response.ok) {
+                    setSellers([...newSellers]);
+                    localStorage.setItem("byse_sellers", JSON.stringify(newSellers));
+                }
+            } catch (err) {
+                console.error("Erro ao salvar vendedor no banco:", err);
+            }
         }
     };
 
     const handleUpdateFiados = async (newFiados) => {
-        setFiados(newFiados);
-        localStorage.setItem("byse_fiados", JSON.stringify(newFiados));
         const latestFiado = Array.isArray(newFiados) && newFiados.length > 0 ? newFiados[newFiados.length - 1] : null;
 
         if (latestFiado) {
             try {
-                await fetch(`${API_URL}/fiados`, {
+                const response = await fetch(`${API_URL}/fiados`, {
                     method: "POST",
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
@@ -244,6 +287,10 @@ function SupplementSystem() {
                         origin: latestFiado.origin || 'PDV'
                     })
                 });
+                if (response.ok) {
+                    setFiados([...newFiados]);
+                    localStorage.setItem("byse_fiados", JSON.stringify(newFiados));
+                }
             } catch (err) {
                 console.error("Erro ao salvar fiado no banco:", err);
             }
@@ -251,13 +298,11 @@ function SupplementSystem() {
     };
 
     const handleUpdateSales = async (newSales) => {
-        setSales(newSales);
-        localStorage.setItem("byse_sales", JSON.stringify(newSales));
         const latestSale = Array.isArray(newSales) && newSales.length > 0 ? newSales[newSales.length - 1] : null;
         
         if (latestSale) {
             try {
-                await fetch(`${API_URL}/sales`, {
+                const response = await fetch(`${API_URL}/sales`, {
                     method: "POST",
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
@@ -275,8 +320,49 @@ function SupplementSystem() {
                         date: latestSale.date || new Date().toISOString()
                     })
                 });
+                if (response.ok) {
+                    setSales([...newSales]);
+                    localStorage.setItem("byse_sales", JSON.stringify(newSales));
+                }
             } catch (err) {
                 console.error("Erro de conexão ao registrar venda:", err);
+            }
+        }
+    };
+
+    // Funções de manipulação e persistência de Pré-Treino
+    const handleUpdatePreTreinoProducts = async (newProducts) => {
+        const latest = Array.isArray(newProducts) && newProducts.length > 0 ? newProducts[newProducts.length - 1] : null;
+        if (latest) {
+            try {
+                const response = await fetch(`${API_URL}/pre-treino/products`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(latest)
+                });
+                if (response.ok) {
+                    setPreTreinoProducts([...newProducts]);
+                }
+            } catch (err) {
+                console.error("Erro ao salvar produto de pré-treino:", err);
+            }
+        }
+    };
+
+    const handleUpdatePreTreinoRecords = async (newRecords) => {
+        const latest = Array.isArray(newRecords) && newRecords.length > 0 ? newRecords[newRecords.length - 1] : null;
+        if (latest) {
+            try {
+                const response = await fetch(`${API_URL}/pre-treino/records`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(latest)
+                });
+                if (response.ok) {
+                    setPreTreinoRecords([...newRecords]);
+                }
+            } catch (err) {
+                console.error("Erro ao salvar registro de pré-treino:", err);
             }
         }
     };
@@ -309,6 +395,7 @@ function SupplementSystem() {
       { id: "catalogo", label: "Catálogo", icon: Store },     
       { id: "cashback", label: "Cashback", icon: Gift },     
       { id: "fiados", label: "Fiados", icon: Wallet },     
+      { id: "preTreino", label: "Pré-Treino", icon: Calendar }, 
       { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },     
       { id: "trafego", label: "Tráfego Pago", icon: TrendingUp },     
       { id: "canais", label: "Canais de Venda", icon: Share2 },     
@@ -328,6 +415,17 @@ function SupplementSystem() {
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
         if (tab === "cashback") return <Cashback customers={customers} setCustomers={handleUpdateCustomers} {...{ cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "fiados") return <Fiados fiados={fiados} setFiados={handleUpdateFiados} {...{ customers, card, border, subtext, accent, text }} />;     
+        if (tab === "preTreino") return (
+            <PreTreino 
+                clientes={customers} 
+                setClientes={handleUpdateCustomers} 
+                produtosPreTreino={preTreinoProducts} 
+                setProdutosPreTreino={handleUpdatePreTreinoProducts} 
+                registros={preTreinoRecords} 
+                setRegistros={handleUpdatePreTreinoRecords} 
+                {...{ card, border, subtext, accent, text, dark }} 
+            />
+        );
         if (tab === "whatsapp") return <WhatsApp {...{ waSchedule, setWaSchedule, cashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "trafego") return <TrafegoPago {...{ adEntries, setAdEntries, sales, card, border, subtext, accent, text }} />;     
         if (tab === "canais") return <CanaisDeVenda {...{ sales, setSales, card, border, subtext, accent, text }} />;     
