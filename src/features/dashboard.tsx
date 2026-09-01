@@ -135,30 +135,23 @@ export function Dashboard({
   accent,
   text
 }) {
-  // Estado local de segurança para garantir persistência ao sair/entrar do painel
+  // Estado local sincronizado diretamente com o banco de dados via props
   const [localSales, setLocalSales] = useState(sales);
 
   useEffect(() => {
-    if (sales && sales.length > 0) {
-      setLocalSales(sales);
-      try {
-        localStorage.setItem("app_sales", JSON.stringify(sales));
-      } catch (e) {
-        console.error("Erro ao salvar vendas no storage", e);
+    // Atualiza o estado refletindo exatamente o que veio do banco/API
+    const currentSales = Array.isArray(sales) ? sales : [];
+    setLocalSales(currentSales);
+
+    try {
+      if (currentSales.length > 0) {
+        localStorage.setItem("app_sales", JSON.stringify(currentSales));
+      } else {
+        // Se o banco estiver vazio, limpa o cache local para refletir o estado zerado
+        localStorage.removeItem("app_sales");
       }
-    } else {
-      // Se a prop vier vazia, tenta resgatar do cache local do navegador
-      try {
-        const savedSales = localStorage.getItem("app_sales") || localStorage.getItem("sales");
-        if (savedSales) {
-          const parsed = JSON.parse(savedSales);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setLocalSales(parsed);
-          }
-        }
-      } catch (e) {
-        console.error("Erro ao recuperar vendas do storage", e);
-      }
+    } catch (e) {
+      console.error("Erro ao gerenciar vendas no storage", e);
     }
   }, [sales]);
 
@@ -225,7 +218,7 @@ export function Dashboard({
     return saleDate >= startCopy && saleDate <= endCopy;
   });
   
-  // Venda Total = Soma exata das vendas filtradas no período[cite: 12, 13]
+  // Venda Total = Soma exata das vendas filtradas no período
   const totalVendido = periodSales.reduce((s, v) => s + Number(v.total || 0), 0);
   
   const custoTotal = periodSales.reduce(

@@ -10,12 +10,10 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Inicializa o banco de dados PostgreSQL ao iniciar o servidor
-initDb();
+if (typeof initDb === 'function') {
+    initDb().catch(err => console.error('Erro na inicialização do DB:', err));
+}
 
-/**
- * Rota de Login para autenticação do front-end (Com auto-cadastro de segurança)
- */
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -60,7 +58,6 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Middleware de Autenticação Estrito
 const authMiddleware = (req, res, next) => {
     let finalUserId = null;
     if (req.headers.authorization) {
@@ -78,9 +75,6 @@ const authMiddleware = (req, res, next) => {
     next();
 };
 
-/**
- * Rotas de Configuração da API de WhatsApp do Usuário
- */
 app.get('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
     try {
         const result = await pool.query(
@@ -115,9 +109,6 @@ app.post('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * ROTA AUTOMATIZADA: Cria a instância do usuário na Evolution API e retorna o QR Code
- */
 app.post('/api/whatsapp/connect', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -197,9 +188,6 @@ app.get('/api/whatsapp/status/:userId', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * Rota para Disparo Manual Imediato de uma Programação
- */
 app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -276,12 +264,12 @@ app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
 });
 
 /**
- * Rotas de Clientes (Isoladas por user_id) - Atualizadas para persistir status e campos adicionais
+ * Rotas de Clientes (Atualizadas com data_aniversario)
  */
 const handleGetCustomers = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, phone, cpf, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade FROM customers WHERE user_id = $1',
+            'SELECT id, name, phone, cpf, data_aniversario, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade FROM customers WHERE user_id = $1',
             [req.user.id]
         );
         return res.status(200).json(result.rows);
@@ -294,27 +282,30 @@ const handleGetCustomers = async (req, res) => {
 const handlePostCustomer = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { id, name, phone, cpf, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade } = req.body;
+        const { id, name, phone, cpf, data_aniversario, birthDate, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade } = req.body;
         const clienteId = id || 'c' + Date.now();
+        const aniversarioFinal = data_aniversario || birthDate || null;
         
         await pool.query(
-            `INSERT INTO customers (id, user_id, name, phone, cpf, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO customers (id, user_id, name, phone, cpf, data_aniversario, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              ON CONFLICT (id) DO UPDATE SET 
                 name = $3, 
                 phone = $4, 
                 cpf = COALESCE($5, customers.cpf),
-                cashback = COALESCE($6, customers.cashback),
-                status = COALESCE($7, customers.status),
-                status_mensalidade = COALESCE($8, customers.status_mensalidade), 
-                data_vencimento = COALESCE($9, customers.data_vencimento), 
-                valor_mensalidade = COALESCE($10, customers.valor_mensalidade)`,
+                data_aniversario = COALESCE($6, customers.data_aniversario),
+                cashback = COALESCE($7, customers.cashback),
+                status = COALESCE($8, customers.status),
+                status_mensalidade = COALESCE($9, customers.status_mensalidade), 
+                data_vencimento = COALESCE($10, customers.data_vencimento), 
+                valor_mensalidade = COALESCE($11, customers.valor_mensalidade)`,
             [
                 clienteId, 
                 userId, 
                 name, 
                 phone || '', 
                 cpf || '', 
+                aniversarioFinal,
                 cashback || 0, 
                 status || 'Ativo', 
                 status_mensalidade || 'Pendente (Não Pago)', 
@@ -323,7 +314,7 @@ const handlePostCustomer = async (req, res) => {
             ]
         );
 
-        const clienteData = { id: clienteId, userId, name, phone: phone || '', status: status || 'Ativo' };
+        const clienteData = { id: clienteId, userId, name, phone: phone || '', data_aniversario: aniversarioFinal, status: status || 'Ativo' };
         return res.status(201).json({ message: 'Cliente salvo', cliente: clienteData });
     } catch (error) {
         console.error('Erro ao salvar cliente:', error);
@@ -351,14 +342,11 @@ app.get('/api/clientes', authMiddleware, handleGetCustomers);
 app.post('/api/clientes', authMiddleware, handlePostCustomer);
 app.delete('/api/clientes/:id', authMiddleware, handleDeleteCustomer);
 
-/**
- * Rotas de Produtos e Estoque (Isoladas por user_id)
- */
 const handleGetProducts = async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await pool.query(
-            'SELECT * FROM products WHERE user_id = $1',
+            'SELECT * FROM products WHERE user_id = $1 ORDER BY created_at DESC',
             [userId]
         );
         
@@ -369,9 +357,13 @@ const handleGetProducts = async (req, res) => {
             imposto: Number(p.imposto || 0),
             frete: Number(p.frete || 0),
             controlStock: p.control_stock,
-            vipPrice: p.vip_price,
-            vipPrice3x: p.vip_price_3x,
+            control_stock: p.control_stock,
+            vipPrice: p.vip_price !== null ? Number(p.vip_price) : null,
+            vip_price: p.vip_price !== null ? Number(p.vip_price) : null,
+            vipPrice3x: p.vip_price_3x !== null ? Number(p.vip_price_3x) : null,
+            vip_price_3x: p.vip_price_3x !== null ? Number(p.vip_price_3x) : null,
             imageUrl: p.image_url,
+            image_url: p.image_url,
             stocks: typeof p.stocks === 'string' ? JSON.parse(p.stocks || '{}') : (p.stocks || {})
         }));
 
@@ -386,38 +378,149 @@ const handlePostProduct = async (req, res) => {
     try {
         const userId = req.user.id;
         const p = req.body;
-        const prodId = p.id || 'p' + Date.now();
+        const prodId = req.params.id || p.id || 'prod_' + Date.now();
+
+        const vipPriceVal = p.vipPrice !== undefined ? p.vipPrice : p.vip_price;
+        const vipPrice3xVal = p.vipPrice3x !== undefined ? p.vipPrice3x : p.vip_price_3x;
+        const controlStockVal = p.controlStock !== undefined ? p.controlStock : (p.control_stock !== undefined ? p.control_stock : true);
+        const imageUrlVal = p.imageUrl !== undefined ? p.imageUrl : p.image_url;
+        const stocksVal = p.stocks !== undefined ? p.stocks : p.stock;
 
         await pool.query(`
-            INSERT INTO products (id, user_id, name, category, barcode, code, cost, price, imposto, frete, vip_price, vip_price_3x, description, control_stock, image_url, stocks)
+            INSERT INTO products (
+                id, user_id, name, category, barcode, code, cost, price, 
+                imposto, frete, vip_price, vip_price_3x, description, 
+                control_stock, image_url, stocks
+            )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             ON CONFLICT (id) DO UPDATE SET
-                name = $3, category = $4, barcode = $5, code = $6, cost = $7, price = $8,
-                imposto = $9, frete = $10, vip_price = $11, vip_price_3x = $12, description = $13,
-                control_stock = $14, image_url = $15, stocks = $16
+                name = $3, 
+                category = $4, 
+                barcode = $5, 
+                code = $6, 
+                cost = $7, 
+                price = $8,
+                imposto = $9, 
+                frete = $10, 
+                vip_price = $11, 
+                vip_price_3x = $12, 
+                description = $13,
+                control_stock = $14, 
+                image_url = $15, 
+                stocks = $16
         `, [
             prodId, 
             userId, 
             p.name, 
-            p.category || 'Geral', 
-            p.barcode || '', 
-            p.code || '', 
+            p.category || 'Sem categoria', 
+            p.barcode || null, 
+            p.code || null, 
             parseFloat(p.cost) || 0, 
             parseFloat(p.price) || 0, 
             parseFloat(p.imposto) || 0, 
             parseFloat(p.frete) || 0, 
-            p.vipPrice ? parseFloat(p.vipPrice) : null, 
-            p.vipPrice3x ? parseFloat(p.vipPrice3x) : null, 
-            p.description || '', 
-            p.controlStock !== false, 
-            p.imageUrl || null, 
-            JSON.stringify(p.stocks || {})
+            vipPriceVal !== null && vipPriceVal !== '' && vipPriceVal !== undefined ? parseFloat(vipPriceVal) : null, 
+            vipPrice3xVal !== null && vipPrice3xVal !== '' && vipPrice3xVal !== undefined ? parseFloat(vipPrice3xVal) : null, 
+            p.description || null, 
+            controlStockVal ?? true, 
+            imageUrlVal || null, 
+            JSON.stringify(stocksVal || {})
         ]);
 
-        return res.status(201).json({ message: 'Produto salvo com sucesso', produto: p });
+        const updatedRes = await pool.query('SELECT * FROM products WHERE id = $1 AND user_id = $2', [prodId, userId]);
+        const savedProduct = updatedRes.rows[0];
+
+        return res.status(201).json({
+            ...savedProduct,
+            cost: Number(savedProduct.cost || 0),
+            price: Number(savedProduct.price || 0),
+            imposto: Number(savedProduct.imposto || 0),
+            frete: Number(savedProduct.frete || 0),
+            controlStock: savedProduct.control_stock,
+            vipPrice: savedProduct.vip_price !== null ? Number(savedProduct.vip_price) : null,
+            vipPrice3x: savedProduct.vip_price_3x !== null ? Number(savedProduct.vip_price_3x) : null,
+            imageUrl: savedProduct.image_url,
+            stocks: typeof savedProduct.stocks === 'string' ? JSON.parse(savedProduct.stocks || '{}') : (savedProduct.stocks || {})
+        });
     } catch (error) {
         console.error('Erro ao salvar produto:', error);
         return res.status(500).json({ error: 'Erro interno ao salvar produto' });
+    }
+};
+
+const handlePutProduct = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+        const p = req.body;
+
+        const vipPriceVal = p.vipPrice !== undefined ? p.vipPrice : p.vip_price;
+        const vipPrice3xVal = p.vipPrice3x !== undefined ? p.vipPrice3x : p.vip_price_3x;
+        const controlStockVal = p.controlStock !== undefined ? p.controlStock : (p.control_stock !== undefined ? p.control_stock : true);
+        const imageUrlVal = p.imageUrl !== undefined ? p.imageUrl : p.image_url;
+        const stocksVal = p.stocks !== undefined ? p.stocks : p.stock;
+
+        const query = `
+            UPDATE products 
+            SET name = $1, 
+                category = $2, 
+                barcode = $3, 
+                code = $4, 
+                cost = $5, 
+                price = $6, 
+                imposto = $7, 
+                frete = $8, 
+                vip_price = $9, 
+                vip_price_3x = $10, 
+                description = $11, 
+                control_stock = $12, 
+                image_url = $13, 
+                stocks = $14
+            WHERE id = $15 AND user_id = $16
+            RETURNING *;
+        `;
+
+        const values = [
+            p.name,
+            p.category || 'Sem categoria',
+            p.barcode || null,
+            p.code || null,
+            parseFloat(p.cost) || 0,
+            parseFloat(p.price) || 0,
+            parseFloat(p.imposto) || 0,
+            parseFloat(p.frete) || 0,
+            vipPriceVal !== null && vipPriceVal !== '' && vipPriceVal !== undefined ? parseFloat(vipPriceVal) : null,
+            vipPrice3xVal !== null && vipPrice3xVal !== '' && vipPrice3xVal !== undefined ? parseFloat(vipPrice3xVal) : null,
+            p.description || null,
+            controlStockVal ?? true,
+            imageUrlVal || null,
+            JSON.stringify(stocksVal || {}),
+            id,
+            userId
+        ];
+
+        const result = await pool.query(query, values);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Produto não encontrado ou sem permissão.' });
+        }
+
+        const updatedProduct = result.rows[0];
+        res.json({
+            ...updatedProduct,
+            cost: Number(updatedProduct.cost || 0),
+            price: Number(updatedProduct.price || 0),
+            imposto: Number(updatedProduct.imposto || 0),
+            frete: Number(updatedProduct.frete || 0),
+            controlStock: updatedProduct.control_stock,
+            vipPrice: updatedProduct.vip_price !== null ? Number(updatedProduct.vip_price) : null,
+            vipPrice3x: updatedProduct.vip_price_3x !== null ? Number(updatedProduct.vip_price_3x) : null,
+            imageUrl: updatedProduct.image_url,
+            stocks: typeof updatedProduct.stocks === 'string' ? JSON.parse(updatedProduct.stocks || '{}') : (updatedProduct.stocks || {})
+        });
+    } catch (error) {
+        console.error("Erro ao atualizar produto:", error);
+        res.status(500).json({ error: "Erro interno ao atualizar produto." });
     }
 };
 
@@ -425,13 +528,18 @@ app.get('/api/produtos', authMiddleware, handleGetProducts);
 app.get('/api/products', authMiddleware, handleGetProducts);
 app.post('/api/produtos', authMiddleware, handlePostProduct);
 app.post('/api/products', authMiddleware, handlePostProduct);
+app.put('/api/produtos/:id', authMiddleware, handlePutProduct);
+app.put('/api/products/:id', authMiddleware, handlePutProduct);
 
 app.delete('/api/produtos/:id', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const prodId = req.params.id;
-        await pool.query('DELETE FROM products WHERE id = $1 AND user_id = $2', [prodId, userId]);
-        return res.status(200).json({ message: 'Produto removido com sucesso' });
+        const result = await pool.query('DELETE FROM products WHERE id = $1 AND user_id = $2 RETURNING id', [prodId, userId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Produto não encontrado.' });
+        }
+        return res.status(200).json({ success: true, id: prodId, message: 'Produto removido com sucesso' });
     } catch (error) {
         console.error('Erro ao remover produto:', error);
         return res.status(500).json({ error: 'Erro interno ao remover produto' });
@@ -442,17 +550,17 @@ app.delete('/api/products/:id', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const prodId = req.params.id;
-        await pool.query('DELETE FROM products WHERE id = $1 AND user_id = $2', [prodId, userId]);
-        return res.status(200).json({ message: 'Produto removido com sucesso' });
+        const result = await pool.query('DELETE FROM products WHERE id = $1 AND user_id = $2 RETURNING id', [prodId, userId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Produto não encontrado.' });
+        }
+        return res.status(200).json({ success: true, id: prodId, message: 'Produto removido com sucesso' });
     } catch (error) {
         console.error('Erro ao remover produto:', error);
         return res.status(500).json({ error: 'Erro interno ao remover produto' });
     }
 });
 
-/**
- * Rotas de Vendas (PDV) (Isoladas por user_id)
- */
 app.get('/api/sales', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -565,9 +673,6 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * Rotas de Fiados / Crediário
- */
 app.get('/api/fiados', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -636,9 +741,6 @@ app.delete('/api/fiados/:id', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * Rotas de Vendedores
- */
 const handleGetSellers = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -763,9 +865,6 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * Rotas de Pré-Treino (Isoladas por user_id) - Produtos e Registros
- */
 app.get('/api/pre-treino/products', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -816,7 +915,6 @@ app.post('/api/pre-treino/products', authMiddleware, async (req, res) => {
     }
 });
 
-// Rota de exclusão para Produtos de Pré-Treino (Integrada ao Banco e com validação de usuário)
 app.delete('/api/pre-treino/products/:id', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -833,7 +931,7 @@ app.get('/api/pre-treino/records', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await pool.query(
-            'SELECT id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horário FROM pre_treino_registros WHERE user_id = $1 ORDER BY created_at DESC',
+            'SELECT id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horario FROM pre_treino_registros WHERE user_id = $1 ORDER BY created_at DESC',
             [userId]
         );
         const formatted = result.rows.map(r => ({
@@ -845,7 +943,7 @@ app.get('/api/pre-treino/records', authMiddleware, async (req, res) => {
             cost: Number(r.custo || 0),
             price: Number(r.custo || 0),
             date: r.data || new Date().toISOString(),
-            horario: r.horário
+            horario: r.horario
         }));
         return res.status(200).json(formatted);
     } catch (error) {
@@ -868,9 +966,9 @@ app.post('/api/pre-treino/records', authMiddleware, async (req, res) => {
         const horario = r.horario || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
         await pool.query(
-            `INSERT INTO pre_treino_registros (id, user_id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horário)
+            `INSERT INTO pre_treino_registros (id, user_id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horario)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             ON CONFLICT (id) DO UPDATE SET customer_id = $3, nome_cliente = $4, produto_id = $5, nome_produto = $6, custo = $7, data = $8, horário = $9`,
+             ON CONFLICT (id) DO UPDATE SET customer_id = $3, nome_cliente = $4, produto_id = $5, nome_produto = $6, custo = $7, data = $8, horario = $9`,
             [recordId, userId, customerId, nomeCliente, produtoId, nomeProduto, custo, data, horario]
         );
         return res.status(201).json({ message: 'Registro de pré-treino salvo!' });
@@ -892,9 +990,6 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * Rotas de Programação do WhatsApp
- */
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -956,9 +1051,6 @@ app.post('/api/whatsapp', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * 🤖 CRON JOB: Disparador Automático Multi-tenant
- */
 cron.schedule('* * * * *', async () => {
     try {
         const agora = new Date();

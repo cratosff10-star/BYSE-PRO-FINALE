@@ -48,7 +48,8 @@ import {
   Mail,
   Wallet,
   Banknote,
-  Save
+  Save,
+  ExternalLink
 } from "lucide-react";
 
 import {
@@ -124,7 +125,7 @@ import type {
 } from "../types";
 
 
-function Catalogo({
+export function Catalogo({
   products,
   sales,
   card,
@@ -174,8 +175,8 @@ function Catalogo({
 
   const shareWhatsApp = () =>
     window.open(
-      `https://wa.me/?text=${encodeURIComponent(
-        "Confira nosso catálogo: " + catalogLink
+      `https://wa.me/83986441546?text=${encodeURIComponent(
+        "Olá! Gostaria de consultar o preço dos produtos no catálogo."
       )}`,
       "_blank"
     );
@@ -189,14 +190,15 @@ function Catalogo({
   };
 
   const checkVip = () => {
-    if (vipInput === vipPassword) {
+    const matchCode = products.some((p) => p.code && p.code.trim() === vipInput.trim());
+    if (vipInput === vipPassword || matchCode) {
       setVipUnlocked(true);
       setShowVipModal(false);
       setVipInput("");
       setVipError("");
       setShowVipWelcome(true);
     } else {
-      setVipError("Senha incorreta");
+      setVipError("Código ou senha incorreta");
     }
   };
 
@@ -257,7 +259,7 @@ function Catalogo({
     const msg = `Olá! Gostaria de fazer o seguinte pedido (preço VIP):\n${lines}\n\nVocê economiza: ${money(
       vipSavings
     )}\nTotal: ${money(vipTotal)}\nPagamento: ${vipPayment}\nEntrega: ${vipFulfillment}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://wa.me/83986441546?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const activeProducts = activeCategory
@@ -287,6 +289,58 @@ function Catalogo({
         sub="Vitrine de produtos para compartilhar com clientes"
         subtext={subtext}
       />
+
+      {/* Bloco com o Link público de acesso ao catálogo */}
+      <div
+        style={{
+          background: card,
+          border: `1px solid ${border}`,
+          borderRadius: 12,
+          padding: "12px 16px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 10
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: text, marginBottom: 2 }}>
+            Link público do Catálogo para clientes:
+          </div>
+          <a
+            href={catalogLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 13, color: accent, textDecoration: "underline", wordBreak: "break-all" }}
+          >
+            {catalogLink}
+          </a>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={copyLink} style={ghostBtn(border, text)}>
+            <Clipboard size={14} /> Copiar link
+          </button>
+          <a
+            href={catalogLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              ...ghostBtn(border, text),
+              background: accent,
+              color: "#fff",
+              border: "none",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6
+            }}
+          >
+            <ExternalLink size={14} /> Acessar catálogo
+          </a>
+        </div>
+      </div>
 
       <div
         style={{
@@ -421,9 +475,6 @@ function Catalogo({
               : "Consultar valor (catálogo normal)"}
           </button>
         )}
-        <button onClick={copyLink} style={ghostBtn(border, text)}>
-          <Clipboard size={14} /> Copiar link
-        </button>
         <button
           onClick={shareWhatsApp}
           style={{
@@ -433,7 +484,7 @@ function Catalogo({
             border: "none"
           }}
         >
-          <MessageCircle size={14} /> Falar no WhatsApp (consultar preço)
+          <MessageCircle size={14} /> Falar no WhatsApp (83986441546)
         </button>
         <button
           onClick={() => setShowVipModal(true)}
@@ -444,7 +495,7 @@ function Catalogo({
             border: "none"
           }}
         >
-          <Lock size={14} /> {vipUnlocked ? "Cliente VIP ✓" : "Cliente VIP"}
+          <Lock size={14} /> {vipUnlocked ? "Cliente VIP ✓" : "Inserir Código VIP"}
         </button>
         <button
           onClick={() => setPreviewMode(!previewMode)}
@@ -853,9 +904,11 @@ function Catalogo({
                           à vista
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: subtext }}>
-                        ou 3x de {money(per3x)} sem juros
-                      </div>
+                      {per3x && (
+                        <div style={{ fontSize: 11, color: subtext }}>
+                          ou 3x de {money(per3x)} sem juros
+                        </div>
+                      )}
                       <div
                         style={{
                           fontSize: 10.5,
@@ -1149,7 +1202,7 @@ function Catalogo({
               gap: 8
             }}
           >
-            <MessageCircle size={16} /> Finalizar pedido no WhatsApp
+            <MessageCircle size={16} /> Finalizar pedido no WhatsApp (83986441546)
           </button>
         </div>
       )}
@@ -1184,7 +1237,7 @@ function Catalogo({
                 marginBottom: 4
               }}
             >
-              ÁREA VIP
+              ÁREA VIP / CÓDIGO DO CATÁLOGO
             </div>
             <div
               style={{
@@ -1193,10 +1246,10 @@ function Catalogo({
                 marginBottom: 12
               }}
             >
-              Digite a senha para ver preços exclusivos.
+              Digite o código do produto ou a senha VIP para desbloquear os preços exclusivos.
             </div>
             <input
-              type="password"
+              type="text"
               value={vipInput}
               onChange={(e) => {
                 setVipInput(e.target.value);
@@ -1278,5 +1331,3 @@ function Catalogo({
     </div>
   );
 }
-
-export { Catalogo };

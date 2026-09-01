@@ -28,6 +28,7 @@ export async function initDb() {
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL,
       cpf VARCHAR(50),
+      data_aniversario DATE,
       cashback NUMERIC DEFAULT 0,
       status VARCHAR(100) DEFAULT 'Ativo',
       whatsapp_opt_in INT DEFAULT 0,
@@ -37,6 +38,8 @@ export async function initDb() {
       valor_mensalidade NUMERIC DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_aniversario DATE;
 
     CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(255) PRIMARY KEY,
@@ -114,7 +117,6 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Tabelas para Pré-Treino, Produtos de Pré-Treino e Registros de Consumo
     CREATE TABLE IF NOT EXISTS pre_treino (
       id VARCHAR(255) PRIMARY KEY,
       user_id VARCHAR(255),
@@ -135,9 +137,9 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS pre_treino_registros (
       id VARCHAR(255) PRIMARY KEY,
       user_id VARCHAR(255),
-      customer_id VARCHAR(255) REFERENCES customers(id) ON DELETE CASCADE,
+      customer_id VARCHAR(255),
       nome_cliente VARCHAR(255),
-      produto_id VARCHAR(255) REFERENCES pre_treino_produtos(id) ON DELETE CASCADE,
+      produto_id VARCHAR(255),
       nome_produto VARCHAR(255),
       custo NUMERIC DEFAULT 0,
       data VARCHAR(50),
@@ -145,12 +147,14 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS status_mensalidade VARCHAR(100) DEFAULT 'Pendente (Não Pago)';
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_vencimento DATE;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS valor_mensalidade NUMERIC DEFAULT 0;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cpf VARCHAR(50);
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback NUMERIC DEFAULT 0;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS status VARCHAR(100) DEFAULT 'Ativo';
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS horario VARCHAR(50);
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS customer_id VARCHAR(255);
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS nome_cliente VARCHAR(255);
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS produto_id VARCHAR(255);
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS nome_produto VARCHAR(255);
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS custo NUMERIC DEFAULT 0;
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS data VARCHAR(50);
   `);
   console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
 }

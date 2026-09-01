@@ -21,24 +21,38 @@ export function Estoque({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  // Utiliza a variável de ambiente do Railway configurada na Vercel, com fallback para o ambiente local
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
+  const getApiUrl = () => {
+    if (import.meta.env.VITE_API_URL) {
+        const raw = import.meta.env.VITE_API_URL;
+        return raw.endsWith('/api') ? raw : `${raw.endsWith('/') ? raw.slice(0, -1) : raw}/api`;
+    }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:3333/api';
+    }
+    return 'https://byse-pro-finale-production.up.railway.app/api';
+  };
 
-  // 🔄 Carrega produtos e locais do backend ao abrir a tela
+  const API_URL = getApiUrl();
+
   useEffect(() => {
     const fetchEstoqueData = async () => {
       const token = localStorage.getItem("byse_token");
-      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
-      const headers = { "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" };
+      const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
 
       try {
         const [resProd, resLoc] = await Promise.all([
-          fetch(`${API_URL}/api/produtos`, { headers }),
-          fetch(`${API_URL}/api/locais`, { headers })
+          fetch(`${API_URL}/products`, { headers }),
+          fetch(`${API_URL}/stock_locations`, { headers }).catch(() => null)
         ]);
 
-        if (resProd.ok) setProducts(await resProd.json());
-        if (resLoc.ok) setStockLocations(await resLoc.json());
+        if (resProd.ok) {
+          const data = await resProd.json();
+          if (Array.isArray(data)) setProducts(data);
+        }
+        if (resLoc && resLoc.ok) {
+          const locData = await resLoc.json();
+          if (Array.isArray(locData) && locData.length > 0) setStockLocations(locData);
+        }
       } catch (error) {
         console.error("Erro ao buscar dados de estoque:", error);
       }
@@ -69,58 +83,34 @@ export function Estoque({
   const renameLoc = async (id, name) => {
     const updatedLocs = stockLocations.map((l) => (l.id === id ? { ...l, name } : l));
     setStockLocations(updatedLocs);
-
-    const token = localStorage.getItem("byse_token");
-    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
-
-    await fetch(`${API_URL}/api/locais`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" },
-      body: JSON.stringify({ id, name })
-    });
   };
 
-  const addLoc = async () => {
+  const addLoc = () => {
     if (!newLocName.trim()) return;
-    const token = localStorage.getItem("byse_token");
-    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
-
-    try {
-      const response = await fetch(`${API_URL}/api/locais`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" },
-        body: JSON.stringify({ name: newLocName.trim() })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStockLocations(data);
-        setNewLocName("");
-      }
-    } catch (error) {
-      console.error("Erro ao adicionar local:", error);
-    }
+    const newLocs = [...stockLocations, { id: `loc_${Date.now()}`, name: newLocName.trim() }];
+    setStockLocations(newLocs);
+    setNewLocName("");
   };
 
   const startEdit = (p) => {
     setEditingId(p.id);
     setForm({
-      name: p.name,
-      category: p.category,
-      cost: String(p.cost),
-      price: String(p.price),
+      name: p.name || "",
+      category: p.category || "",
+      cost: p.cost != null ? String(p.cost) : "",
+      price: p.price != null ? String(p.price) : "",
       imposto: p.imposto != null ? String(p.imposto) : "",
       frete: p.frete != null ? String(p.frete) : "",
-      vipPrice: p.vipPrice != null ? String(p.vipPrice) : "",
-      vipPrice3x: p.vipPrice3x != null ? String(p.vipPrice3x) : "",
+      vipPrice: p.vip_price != null ? String(p.vip_price) : (p.vipPrice != null ? String(p.vipPrice) : ""),
+      vipPrice3x: p.vip_price_3x != null ? String(p.vip_price_3x) : (p.vipPrice3x != null ? String(p.vipPrice3x) : ""),
       barcode: p.barcode || "",
       code: p.code || "",
       description: p.description || "",
-      controlStock: p.controlStock,
+      controlStock: p.control_stock ?? (p.controlStock ?? true),
       stocks: Object.fromEntries(
         Object.entries(p.stocks || {}).map(([k, v]) => [k, String(v)])
       ),
-      imageUrl: p.imageUrl || null
+      imageUrl: p.image_url || p.imageUrl || null
     });
     setShowForm(true);
   };
@@ -147,54 +137,61 @@ export function Estoque({
     return (v / c) * 100;
   };
 
-  // 💾 Salva o produto via backend
   const saveProduct = async () => {
     if (!form.name || !form.price) return;
+    
+    const stocksObj = form.controlStock
+      ? Object.fromEntries(
+          stockLocations.map((l) => [
+            l.id,
+            parseInt(form.stocks[l.id]) || 0
+          ])
+        )
+      : {};
+
     const built = {
-      id: editingId || "p" + Date.now(),
+      id: editingId || "prod_" + Date.now(),
       name: form.name,
       category: form.category || "Sem categoria",
-      barcode: form.barcode,
-      code: form.code,
+      barcode: form.barcode || "",
+      code: form.code || "",
       cost: parseFloat(form.cost) || 0,
       price: parseFloat(form.price) || 0,
       imposto: form.imposto ? parseFloat(form.imposto) : 0,
       frete: form.frete ? parseFloat(form.frete) : 0,
-      vipPrice: form.vipPrice ? parseFloat(form.vipPrice) : null,
-      vipPrice3x: form.vipPrice3x ? parseFloat(form.vipPrice3x) : null,
-      description: form.description,
-      controlStock: form.controlStock,
-      variations: [],
-      imageUrl: form.imageUrl,
-      stocks: form.controlStock
-        ? Object.fromEntries(
-            stockLocations.map((l) => [
-              l.id,
-              parseInt(form.stocks[l.id]) || 0
-            ])
-          )
-        : {}
+      vip_price: form.vipPrice !== "" && form.vipPrice != null ? parseFloat(form.vipPrice) : null,
+      vip_price_3x: form.vipPrice3x !== "" && form.vipPrice3x != null ? parseFloat(form.vipPrice3x) : null,
+      description: form.description || "",
+      control_stock: Boolean(form.controlStock),
+      image_url: form.imageUrl || null,
+      stocks: stocksObj
     };
 
     const token = localStorage.getItem("byse_token");
-    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
 
     try {
-      const response = await fetch(`${API_URL}/api/produtos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" },
+      const endpoint = editingId ? `${API_URL}/products/${editingId}` : `${API_URL}/products`;
+      const method = editingId ? "PUT" : "POST";
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(built)
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const savedProd = data.produto || built;
-        setProducts(
-          editingId
-            ? products.map((p) => (p.id === editingId ? savedProd : p))
-            : [...products, savedProd]
-        );
+        const savedData = await response.json();
+        const updatedList = editingId
+          ? products.map((p) => (p.id === editingId ? (savedData.id ? savedData : built) : p))
+          : [...products, (savedData.id ? savedData : built)];
+
+        setProducts(updatedList);
+        localStorage.setItem("byse_products", JSON.stringify(updatedList));
         cancelForm();
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        console.error("Erro retornado pela API:", errJson);
+        alert("Erro ao salvar produto. Verifique os dados.");
       }
     } catch (error) {
       console.error("Erro ao salvar produto:", error);
@@ -204,23 +201,24 @@ export function Estoque({
   const removeProduct = async (id) => {
     if (!confirm("Deseja realmente remover este produto?")) return;
     const token = localStorage.getItem("byse_token");
-    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
 
     try {
-      const response = await fetch(`${API_URL}/api/produtos/${id}`, {
+      const response = await fetch(`${API_URL}/products/${id}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}`, "x-user-id": user.id || "user_1" }
+        headers: { "Authorization": `Bearer ${token}` }
       });
 
       if (response.ok) {
-        setProducts(products.filter((p) => p.id !== id));
+        const filtered = products.filter((p) => p.id !== id);
+        setProducts(filtered);
+        localStorage.setItem("byse_products", JSON.stringify(filtered));
       }
     } catch (error) {
       console.error("Erro ao remover produto:", error);
     }
   };
 
-  const gridCols = `2fr 1fr 0.7fr 0.7fr ${stockLocations
+  const gridCols = `2fr 1fr 0.7fr 0.7fr 0.7fr ${stockLocations
     .map(() => "0.9fr")
     .join(" ")} 0.6fr`;
 
@@ -228,7 +226,7 @@ export function Estoque({
     <div>
       <SectionTitle
         title="Controle de estoque"
-        sub="Múltiplos pontos de estoque — nomes editáveis"
+        sub="Múltiplos pontos de estoque — nomes editáveis com Preço VIP"
         subtext={subtext}
       />
 
@@ -352,7 +350,7 @@ export function Estoque({
               style={inputStyle(border, text)}
             />
             <input
-              placeholder="Código rápido (ex: 30)"
+              placeholder="Código rápido (ex: 30) - Usado no Catálogo"
               value={form.code}
               onChange={(e) =>
                 setForm({ ...form, code: e.target.value })
@@ -386,6 +384,15 @@ export function Estoque({
                 setForm({ ...form, price: e.target.value })
               }
               style={inputStyle(border, text)}
+            />
+            <input
+              placeholder="Preço VIP (R$)"
+              type="number"
+              value={form.vipPrice}
+              onChange={(e) =>
+                setForm({ ...form, vipPrice: e.target.value })
+              }
+              style={{ ...inputStyle(border, text), borderColor: accent }}
             />
           </div>
 
@@ -603,97 +610,104 @@ export function Estoque({
             fontWeight: 700,
             borderBottom: `1px solid ${border}`,
             textTransform: "uppercase",
-            minWidth: 560
+            minWidth: 620
           }}
         >
           <div>Produto</div>
           <div>Categoria</div>
           <div>Custo</div>
           <div>Venda</div>
+          <div>VIP</div>
           {stockLocations.map((l) => (
             <div key={l.id}>{l.name}</div>
           ))}
           <div></div>
         </div>
 
-        {products.map((p, i) => (
-          <div
-            key={p.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: gridCols,
-              padding: "12px 14px",
-              fontSize: 13,
-              alignItems: "center",
-              borderBottom:
-                i < products.length - 1 ? `1px solid ${border}` : "none",
-              minWidth: 560
-            }}
-          >
-            <div style={{ fontWeight: 600 }}>
-              {p.name}
-              {(p.barcode || p.code) && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: subtext,
-                    fontWeight: 400
-                  }}
-                >
-                  {p.code && `cód. ${p.code}`}
-                  {p.code && p.barcode && " · "}
-                  {p.barcode}
-                </div>
-              )}
-            </div>
-            <div>{p.category}</div>
-            <div>{money(p.cost)}</div>
-            <div style={{ fontWeight: 700 }}>{money(p.price)}</div>
-
-            {stockLocations.map((l) => (
-              <div key={l.id}>
-                {p.controlStock ? (
-                  <>
-                    <div>{p.stocks[l.id] ?? 0}</div>
-                    <div style={{ marginTop: 3 }}>
-                      <HBar
-                        pct={((p.stocks[l.id] ?? 0) / 50) * 100}
-                        color={accent}
-                        border={border}
-                        h={4}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <span style={{ color: subtext }}>—</span>
+        {products.map((p, i) => {
+          const pVipPrice = p.vip_price !== undefined ? p.vip_price : p.vipPrice;
+          const pControlStock = p.control_stock !== undefined ? p.control_stock : p.controlStock;
+          
+          return (
+            <div
+              key={p.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: gridCols,
+                padding: "12px 14px",
+                fontSize: 13,
+                alignItems: "center",
+                borderBottom:
+                  i < products.length - 1 ? `1px solid ${border}` : "none",
+                minWidth: 620
+              }}
+            >
+              <div style={{ fontWeight: 600 }}>
+                {p.name}
+                {(p.barcode || p.code) && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: subtext,
+                      fontWeight: 400
+                    }}
+                  >
+                    {p.code && `cód. ${p.code}`}
+                    {p.code && p.barcode && " · "}
+                    {p.barcode}
+                  </div>
                 )}
               </div>
-            ))}
+              <div>{p.category}</div>
+              <div>{money(p.cost)}</div>
+              <div style={{ fontWeight: 700 }}>{money(p.price)}</div>
+              <div style={{ fontWeight: 700, color: accent }}>{pVipPrice != null ? money(pVipPrice) : "—"}</div>
 
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                onClick={() => startEdit(p)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer"
-                }}
-              >
-                <Edit2 size={14} color={subtext} />
-              </button>
-              <button
-                onClick={() => removeProduct(p.id)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer"
-                }}
-              >
-                <Trash2 size={14} color={subtext} />
-              </button>
+              {stockLocations.map((l) => (
+                <div key={l.id}>
+                  {pControlStock !== false ? (
+                    <>
+                      <div>{p.stocks?.[l.id] ?? 0}</div>
+                      <div style={{ marginTop: 3 }}>
+                        <HBar
+                          pct={(((p.stocks?.[l.id] ?? 0)) / 50) * 100}
+                          color={accent}
+                          border={border}
+                          h={4}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <span style={{ color: subtext }}>—</span>
+                  )}
+                </div>
+              ))}
+
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => startEdit(p)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                >
+                  <Edit2 size={14} color={subtext} />
+                </button>
+                <button
+                  onClick={() => removeProduct(p.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                >
+                  <Trash2 size={14} color={subtext} />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

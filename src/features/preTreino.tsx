@@ -6,11 +6,11 @@ export function PreTreino({
   card, border, subtext, accent, text, dark, 
   clientes, setClientes, 
   produtosPreTreino, setProdutosPreTreino, 
-  registros, setRegistros 
+  registros, setRegistros,
+  API_URL, getAuthHeaders
 }: any) {
   const [activeSubTab, setActiveSubTab] = useState<'preTreino' | 'clientes' | 'produtos' | 'relatorios'>('preTreino');
   
-  // Estados locais para inputs do formulário de Clientes
   const [novoNomeCliente, setNovoNomeCliente] = useState('');
   const [novoTelefoneCliente, setNovoTelefoneCliente] = useState('');
   const [novoValorMensalidade, setNovoValorMensalidade] = useState('90.00');
@@ -25,11 +25,9 @@ export function PreTreino({
   const [clienteSelecionadoDetalhes, setClienteSelecionadoDetalhes] = useState<any>(null);
   const [filtroClientes, setFiltroClientes] = useState<'todos' | 'ativos' | 'naoPagos' | 'aVencer' | 'inativos'>('todos');
 
-  // Estados locais para Produtos de Pré-Treino
   const [novoNomeProduto, setNovoNomeProduto] = useState('');
   const [novoCustoProduto, setNovoCustoProduto] = useState('');
 
-  // Estados para Registro de Consumo / Venda Avulsa
   const [tipoConsumo, setTipoConsumo] = useState<'cadastrado' | 'avulso'>('cadastrado');
   const [novoClienteId, setNovoClienteId] = useState('');
   const [nomeClienteAvulso, setNomeClienteAvulso] = useState('');
@@ -61,7 +59,6 @@ export function PreTreino({
   };
 
   const clientesParaConsumo = (clientes || []).filter(c => c.statusMensalidade === 'Pago');
-
   const clientesValidosCusto = (clientes || []).filter(c => c.statusMensalidade !== 'Inativo');
   const totalCustoPreTreinosMes = (registros || []).reduce((acc, curr) => acc + (curr.custo || 0), 0);
   const totalValorMensalidades = clientesValidosCusto.reduce((acc, curr) => acc + Number(curr.valorMensalidade || 0), 0); 
@@ -91,7 +88,8 @@ export function PreTreino({
       valorMensalidade: Number(novoValorMensalidade) || 0
     };
 
-    setClientes([...(clientes || []), novo]);
+    const atualizados = [...(clientes || []), novo];
+    setClientes(atualizados);
     setNovoNomeCliente('');
     setNovoTelefoneCliente('');
     setNovoValorMensalidade('90.00');
@@ -100,11 +98,19 @@ export function PreTreino({
 
   const handleAtualizarStatusCliente = async (clienteId: string, novoStatus: string) => {
     try {
-      await fetch(`/api/customers/${clienteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status_mensalidade: novoStatus })
-      });
+      const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
+      if (API_URL) {
+        const response = await fetch(`${API_URL}/customers/${clienteId}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ status_mensalidade: novoStatus })
+        });
+
+        if (!response.ok) {
+          alert("Erro ao atualizar status no servidor. Tente novamente.");
+          return;
+        }
+      }
 
       const atualizados = (clientes || []).map(c => {
         if (c.id === clienteId) {
@@ -119,21 +125,32 @@ export function PreTreino({
       }
     } catch (error) {
       console.error("Erro ao persistir a atualização de status:", error);
+      alert("Erro de conexão ao atualizar o status do cliente.");
     }
   };
 
-  // 🗑️ Função para Excluir Cliente (Front + API)
   const handleExcluirCliente = async (clienteId: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este cliente?')) return;
     try {
-      await fetch(`/api/customers/${clienteId}`, {
-        method: 'DELETE'
-      });
+      const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
+      if (API_URL) {
+        const response = await fetch(`${API_URL}/customers/${clienteId}`, {
+          method: 'DELETE',
+          headers
+        });
 
-      setClientes((clientes || []).filter(c => c.id !== clienteId));
+        if (!response.ok) {
+          alert("Erro ao excluir cliente no servidor.");
+          return;
+        }
+      }
+
+      const filtrados = (clientes || []).filter(c => c.id !== clienteId);
+      setClientes(filtrados);
       setClienteSelecionadoDetalhes(null);
     } catch (error) {
       console.error("Erro ao excluir cliente:", error);
+      alert("Erro de conexão ao excluir o cliente.");
     }
   };
 
@@ -149,22 +166,33 @@ export function PreTreino({
       custo: Number(novoCustoProduto)
     };
 
-    setProdutosPreTreino([...(produtosPreTreino || []), novoProd]);
+    const atualizados = [...(produtosPreTreino || []), novoProd];
+    setProdutosPreTreino(atualizados);
     setNovoNomeProduto('');
     setNovoCustoProduto('');
   };
 
-  // 🗑️ Função para Excluir Produto de Pré-Treino (Front + API)
   const handleExcluirProduto = async (produtoId: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este produto de pré-treino?')) return;
     try {
-      await fetch(`/api/products/${produtoId}`, {
-        method: 'DELETE'
-      });
+      const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
+      if (API_URL) {
+        const response = await fetch(`${API_URL}/products/${produtoId}`, {
+          method: 'DELETE',
+          headers
+        });
 
-      setProdutosPreTreino((produtosPreTreino || []).filter(p => p.id !== produtoId));
+        if (!response.ok) {
+          alert("Erro ao excluir produto no servidor.");
+          return;
+        }
+      }
+
+      const filtrados = (produtosPreTreino || []).filter(p => p.id !== produtoId);
+      setProdutosPreTreino(filtrados);
     } catch (error) {
       console.error("Erro ao excluir produto:", error);
+      alert("Erro de conexão ao excluir o produto.");
     }
   };
 
@@ -211,34 +239,11 @@ export function PreTreino({
       horario: agora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setRegistros([novoRegistro, ...(registros || [])]);
+    const atualizados = [novoRegistro, ...(registros || [])];
+    setRegistros(atualizados);
     setNovoClienteId('');
     setNomeClienteAvulso('');
     setNewProdutoId('');
-  };
-
-  const rankingPreTreinos = (produtosPreTreino || []).map(prod => {
-    const usos = (registros || []).filter(r => r.produtoId === prod.id);
-    return {
-      ...prod,
-      nome: prod.nome || prod.name,
-      totalUsos: usos.length,
-      custoTotal: usos.reduce((acc, curr) => acc + curr.custo, 0)
-    };
-  }).sort((a, b) => b.totalUsos - a.totalUsos);
-
-  const getClientesPorProduto = (produtoId: string) => {
-    const mapaClientes: { [key: string]: { nome: string; qtd: number; totalGasto: number } } = {};
-    
-    (registros || []).filter(r => r.produtoId === produtoId).forEach(r => {
-      if (!mapaClientes[r.clienteId]) {
-        mapaClientes[r.clienteId] = { nome: r.nomeCliente, qtd: 0, totalGasto: 0 };
-      }
-      mapaClientes[r.clienteId].qtd += 1;
-      mapaClientes[r.clienteId].totalGasto += r.custo;
-    });
-
-    return Object.values(mapaClientes).sort((a: any, b: any) => b.qtd - a.qtd);
   };
 
   return (
@@ -454,7 +459,6 @@ export function PreTreino({
         </div>
       )}
 
-      {/* Modal de Detalhes do Cliente (Com Opção de Excluir) */}
       {clienteSelecionadoDetalhes && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: cardBg, padding: 24, borderRadius: 12, border: `1px solid ${borderColor}`, width: 450, maxWidth: '90%', display: 'flex', flexDirection: 'column', gap: 16 }}>

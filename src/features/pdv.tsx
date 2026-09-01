@@ -60,6 +60,8 @@ export function PDV({
     const newCust = {
       id: "c" + Date.now(),
       ...newCustomerData,
+      // Garantindo que a data de aniversário seja enviada corretamente
+      data_aniversario: newCustomerData.data_aniversario || newCustomerData.birthDate || null,
       cashback: 0
     };
 
@@ -630,40 +632,44 @@ Obrigado pela preferência!
             </div>
           </div>
 
+          {/* PAINEL DO CARRINHO REESTRUTURADO E PADRONIZADO */}
           <div
             style={{
               background: card,
               border: `1px solid ${border}`,
               borderRadius: 14,
-              padding: 15,
-              height: "fit-content"
+              padding: 16,
+              height: "fit-content",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
             }}
           >
             <h3
               style={{
                 color: text,
-                marginBottom: 10,
-                fontSize: 16
+                margin: 0,
+                fontSize: 16,
+                borderBottom: `1px solid ${border}`,
+                paddingBottom: 8
               }}
             >
-              Carrinho
+              Carrinho de Compras
             </h3>
+
             {cart.length === 0 ? (
-              <p
-                style={{
-                  color: subtext,
-                  fontSize: 13,
-                  marginBottom: 15
-                }}
-              >
+              <p style={{ color: subtext, fontSize: 13, margin: "4px 0" }}>
                 Nenhum item adicionado.
               </p>
             ) : (
               <div
                 style={{
-                  marginBottom: 15,
-                  maxHeight: 150,
-                  overflowY: "auto"
+                  maxHeight: 140,
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  paddingRight: 4
                 }}
               >
                 {cart.map((item, idx) => (
@@ -673,14 +679,13 @@ Obrigado pela preferência!
                       display: "flex",
                       justifyContent: "space-between",
                       fontSize: 13,
-                      marginBottom: 6,
                       color: text
                     }}
                   >
                     <span>
                       {item.qty}x {item.name}
                     </span>
-                    <span>
+                    <span style={{ fontWeight: 500 }}>
                       {((Number(item.price) || 0) * item.qty).toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL"
@@ -691,93 +696,153 @@ Obrigado pela preferência!
               </div>
             )}
 
-            <label style={lbl(subtext)}>Vendedor</label>
-            <select
-              value={seller}
-              onChange={(e) => setSeller(e.target.value)}
-              style={{ ...inputStyle(border, text), marginBottom: 10 }}
+            {/* Bloco Organizado com selects estilizados utilizando as cores da tela (card, border, text) */}
+            <div
+              style={{
+                background: `${border}15`,
+                borderRadius: 10,
+                padding: 10,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                border: `1px solid ${border}`
+              }}
             >
-              {sellers.map((s) => (
-                <option key={s.id || s.name} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              <div>
+                <label style={lbl(subtext)}>Vendedor</label>
+                <select
+                  value={seller}
+                  onChange={(e) => setSeller(e.target.value)}
+                  style={{
+                    ...inputStyle(border, text),
+                    backgroundColor: card,
+                    color: text,
+                    width: "100%",
+                    marginTop: 2
+                  }}
+                >
+                  {sellers.map((s) => (
+                    <option key={s.id || s.name} value={s.name} style={{ backgroundColor: card, color: text }}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <label style={lbl(subtext)}>Forma de pagamento</label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              style={{ ...inputStyle(border, text), marginBottom: 10 }}
-            >
-              <option value="Pix">Pix</option>
-              <option value="Crédito">Crédito</option>
-              <option value="Crédito parcelado">Crédito parcelado</option>
-              <option value="Débito">Débito</option>
-              <option value="Dinheiro">Dinheiro</option>
-              <option value="Fiado">Fiado</option>
-            </select>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <label style={lbl(subtext)}>Pagamento</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={{
+                      ...inputStyle(border, text),
+                      backgroundColor: card,
+                      color: text,
+                      width: "100%",
+                      marginTop: 2
+                    }}
+                  >
+                    <option value="Pix" style={{ backgroundColor: card, color: text }}>Pix</option>
+                    <option value="Crédito" style={{ backgroundColor: card, color: text }}>Crédito</option>
+                    <option value="Crédito parcelado" style={{ backgroundColor: card, color: text }}>Crédito parcelado</option>
+                    <option value="Débito" style={{ backgroundColor: card, color: text }}>Débito</option>
+                    <option value="Dinheiro" style={{ backgroundColor: card, color: text }}>Dinheiro</option>
+                    <option value="Fiado" style={{ backgroundColor: card, color: text }}>Fiado</option>
+                  </select>
+                </div>
 
-            <label style={lbl(subtext)}>Desconto (R$)</label>
-            <input
-              type="number"
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              style={{ ...inputStyle(border, text), marginBottom: 10 }}
-            />
+                <div>
+                  <label style={lbl(subtext)}>Desconto (R$)</label>
+                  <input
+                    type="number"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    style={{
+                      ...inputStyle(border, text),
+                      backgroundColor: card,
+                      color: text,
+                      width: "100%",
+                      marginTop: 2
+                    }}
+                  />
+                </div>
+              </div>
 
-            <label style={lbl(subtext)}>Gênero</label>
-            <select
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              style={{ ...inputStyle(border, text), marginBottom: 10 }}
-            >
-              <option value="Masculino">Masculino</option>
-              <option value="Feminino">Feminino</option>
-              <option value="Prefiro não informar">
-                Prefiro não informar
-              </option>
-            </select>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <label style={lbl(subtext)}>Canal</label>
+                  <select
+                    value={salesChannel}
+                    onChange={(e) => setSalesChannel(e.target.value)}
+                    style={{
+                      ...inputStyle(border, text),
+                      backgroundColor: card,
+                      color: text,
+                      width: "100%",
+                      marginTop: 2
+                    }}
+                  >
+                    <option value="Loja física" style={{ backgroundColor: card, color: text }}>Loja física</option>
+                    <option value="Instagram" style={{ backgroundColor: card, color: text }}>Instagram</option>
+                    <option value="WhatsApp" style={{ backgroundColor: card, color: text }}>WhatsApp</option>
+                    <option value="Degustação" style={{ backgroundColor: card, color: text }}>Degustação</option>
+                  </select>
+                </div>
 
-            <label style={lbl(subtext)}>Canal de venda</label>
-            <select
-              value={salesChannel}
-              onChange={(e) => setSalesChannel(e.target.value)}
-              style={{ ...inputStyle(border, text), marginBottom: 10 }}
-            >
-              <option value="Instagram">Instagram</option>
-              <option value="WhatsApp">WhatsApp</option>
-              <option value="Degustação">Degustação</option>
-              <option value="Loja física">Loja física</option>
-            </select>
+                <div>
+                  <label style={lbl(subtext)}>Entrega</label>
+                  <select
+                    value={deliveryType}
+                    onChange={(e) => setDeliveryType(e.target.value)}
+                    style={{
+                      ...inputStyle(border, text),
+                      backgroundColor: card,
+                      color: text,
+                      width: "100%",
+                      marginTop: 2
+                    }}
+                  >
+                    <option value="Retirada" style={{ backgroundColor: card, color: text }}>Retirada</option>
+                    <option value="Delivery" style={{ backgroundColor: card, color: text }}>Delivery</option>
+                  </select>
+                </div>
+              </div>
 
-            <label style={lbl(subtext)}>Entrega</label>
-            <select
-              value={deliveryType}
-              onChange={(e) => setDeliveryType(e.target.value)}
-              style={{ ...inputStyle(border, text), marginBottom: 15 }}
-            >
-              <option value="Retirada">Retirada</option>
-              <option value="Delivery">Delivery</option>
-            </select>
+              <div>
+                <label style={lbl(subtext)}>Gênero do Cliente</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  style={{
+                    ...inputStyle(border, text),
+                    backgroundColor: card,
+                    color: text,
+                    width: "100%",
+                    marginTop: 2
+                  }}
+                >
+                  <option value="Prefiro não informar" style={{ backgroundColor: card, color: text }}>Prefiro não informar</option>
+                  <option value="Feminino" style={{ backgroundColor: card, color: text }}>Feminino</option>
+                  <option value="Masculino" style={{ backgroundColor: card, color: text }}>Masculino</option>
+                </select>
+              </div>
+            </div>
 
+            {/* Totais do Pedido */}
             <div
               style={{
                 borderTop: `1px solid ${border}`,
-                paddingTop: 10,
-                marginBottom: 15,
+                paddingTop: 8,
                 fontSize: 13,
-                color: text
+                color: text,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 4
-                }}
-              >
-                <span>Subtotal</span>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: subtext }}>Subtotal</span>
                 <span>
                   {subtotal.toLocaleString("pt-BR", {
                     style: "currency",
@@ -785,14 +850,8 @@ Obrigado pela preferência!
                   })}
                 </span>
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 4
-                }}
-              >
-                <span>Desconto</span>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: subtext }}>Desconto</span>
                 <span>
                   -{Number(discount).toLocaleString("pt-BR", {
                     style: "currency",
@@ -805,8 +864,8 @@ Obrigado pela preferência!
                   display: "flex",
                   justifyContent: "space-between",
                   fontWeight: "bold",
-                  fontSize: 15,
-                  marginTop: 6,
+                  fontSize: 16,
+                  marginTop: 4,
                   color: accent
                 }}
               >
@@ -831,7 +890,7 @@ Obrigado pela preferência!
                 width: "100%",
                 fontWeight: "bold",
                 cursor: "pointer",
-                marginBottom: 10
+                marginTop: 4
               }}
             >
               Finalizar venda

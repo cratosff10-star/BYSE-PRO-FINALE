@@ -17,9 +17,19 @@ import { DRE, Planos } from "../features/finance";
 import { Fiados } from "../features/fiados";
 import { PreTreino } from "../features/preTreino";
 
-    // Garante que se a URL terminar com '/', removemos, e se não tiver '/api', nós adicionamos automaticamente
-    const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:3333";
-    const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl.endsWith('/') ? rawApiUrl.slice(0, -1) : rawApiUrl}/api`;
+    // Configuração inteligente de API para suportar Local (Localhost) e Produção (Railway)
+    const getApiUrl = () => {
+        if (import.meta.env.VITE_API_URL) {
+            const raw = import.meta.env.VITE_API_URL;
+            return raw.endsWith('/api') ? raw : `${raw.endsWith('/') ? raw.slice(0, -1) : raw}/api`;
+        }
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'http://localhost:3333/api';
+        }
+        return 'https://byse-pro-finale-production.up.railway.app/api';
+    };
+
+    const API_URL = getApiUrl();
 
 function SupplementSystem() {   
     const [user, setUser] = useState<any>(null);
@@ -38,11 +48,7 @@ function SupplementSystem() {
     const [adEntries, setAdEntries] = useState([]);
     const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);
 
-    // Estados de pré-treino com persistência
-    const [preTreinoProducts, setPreTreinoProducts] = useState([
-        { id: 'p1', name: 'Dragon Pharma (Dose)', custo: 5.00 },
-        { id: 'p2', name: 'Insane Labz (Dose)', custo: 6.00 }
-    ]);
+    // Estados de pré-treino focados exclusivamente em registros de consumo
     const [preTreinoRecords, setPreTreinoRecords] = useState([]);
 
     const [cashbackPct, setCashbackPct] = useState(3);   
@@ -61,7 +67,7 @@ function SupplementSystem() {
         };
     };
 
-    // Sincronização protegida incluindo Pré-Treino do banco de dados (imutável contra alterações locais indesejadas)
+    // Sincronização estrita espelhando o banco de dados como fonte absoluta[cite: 9]
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
@@ -118,21 +124,13 @@ function SupplementSystem() {
                 }
             }
 
-            // Sincronização Pré-Treino Produtos
-            const resPtProds = await fetch(`${API_URL}/pre-treino/products`, { headers });
-            if (resPtProds.ok) {
-                const data = await resPtProds.json();
-                if (Array.isArray(data)) {
-                    setPreTreinoProducts([...data]);
-                }
-            }
-
-            // Sincronização Pré-Treino Registros
+            // Sincronização de Registros de Pré-Treino (tabela pre_treino_registros)
             const resPtRecs = await fetch(`${API_URL}/pre-treino/records`, { headers });
             if (resPtRecs.ok) {
                 const data = await resPtRecs.json();
                 if (Array.isArray(data)) {
                     setPreTreinoRecords([...data]);
+                    localStorage.setItem("byse_pre_treino_records", JSON.stringify(data));
                 }
             }
         } catch (err) {
@@ -140,7 +138,7 @@ function SupplementSystem() {
         }
     };
 
-    // Polling em background a cada 10 segundos para manter tudo sincronizado ao vivo
+    // Polling em background a cada 10 segundos para manter tudo sincronizado ao vivo com o servidor
     useEffect(() => {
         if (!user) return;
         const interval = setInterval(() => {
@@ -186,6 +184,7 @@ function SupplementSystem() {
         localStorage.removeItem("byse_sales");
         localStorage.removeItem("byse_sellers");
         localStorage.removeItem("byse_fiados");
+        localStorage.removeItem("byse_pre_treino_records");
         setUser(null);
         setCustomers([]);
         setSales([]);
@@ -244,6 +243,54 @@ function SupplementSystem() {
             } catch (err) {
                 console.error("Erro ao salvar produto no banco:", err);
             }
+        }
+    };
+
+    const handleDeleteProduct = async (productId) => {
+        try {
+            const response = await fetch(`${API_URL}/products/${productId}`, {
+                method: "DELETE",
+                headers: getAuthHeaders()
+            });
+
+            if (response.ok) {
+                const updatedProducts = products.filter(p => p.id !== productId);
+                setProducts(updatedProducts);
+                localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
+            } else {
+                console.error("Erro ao excluir produto no servidor");
+            }
+        } catch (err) {
+            console.error("Erro de conexão ao excluir produto:", err);
+        }
+    };
+
+    const handleEditProduct = async (updatedProduct) => {
+        try {
+            const response = await fetch(`${API_URL}/products/${updatedProduct.id}`, {
+                method: "PUT",
+                headers: getAuthHeaders(),
+                body: JSON.stringify(updatedProduct)
+            });
+
+            if (response.ok) {
+                const updatedProducts = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+                setProducts(updatedProducts);
+                localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
+            } else {
+                const fallbackResponse = await fetch(`${API_URL}/products`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(updatedProduct)
+                });
+                if (fallbackResponse.ok) {
+                    const updatedProducts = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+                    setProducts(updatedProducts);
+                    localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao atualizar produto:", err);
         }
     };
 
@@ -330,25 +377,6 @@ function SupplementSystem() {
         }
     };
 
-    // Funções de manipulação e persistência de Pré-Treino
-    const handleUpdatePreTreinoProducts = async (newProducts) => {
-        const latest = Array.isArray(newProducts) && newProducts.length > 0 ? newProducts[newProducts.length - 1] : null;
-        if (latest) {
-            try {
-                const response = await fetch(`${API_URL}/pre-treino/products`, {
-                    method: "POST",
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify(latest)
-                });
-                if (response.ok) {
-                    setPreTreinoProducts([...newProducts]);
-                }
-            } catch (err) {
-                console.error("Erro ao salvar produto de pré-treino:", err);
-            }
-        }
-    };
-
     const handleUpdatePreTreinoRecords = async (newRecords) => {
         const latest = Array.isArray(newRecords) && newRecords.length > 0 ? newRecords[newRecords.length - 1] : null;
         if (latest) {
@@ -360,10 +388,14 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setPreTreinoRecords([...newRecords]);
+                    localStorage.setItem("byse_pre_treino_records", JSON.stringify(newRecords));
                 }
             } catch (err) {
                 console.error("Erro ao salvar registro de pré-treino:", err);
             }
+        } else {
+            setPreTreinoRecords([...newRecords]);
+            localStorage.setItem("byse_pre_treino_records", JSON.stringify(newRecords));
         }
     };
 
@@ -409,7 +441,7 @@ function SupplementSystem() {
     const renderScreen = () => {     
         if (tab === "dashboard") return <Dashboard {...{ sales, products, customers, sellers, card, border, subtext, accent, text }} />;     
         if (tab === "clientes") return <Clientes customers={customers} setCustomers={handleUpdateCustomers} {...{ sales, card, border, subtext, accent, text }} />;     
-        if (tab === "estoque") return <Estoque products={products} setProducts={handleUpdateProducts} {...{ stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
+        if (tab === "estoque") return <Estoque products={products} setProducts={handleUpdateProducts} onDeleteProduct={handleDeleteProduct} onEditProduct={handleEditProduct} {...{ stockLocations, setStockLocations, card, border, subtext, accent, text }} />;     
         if (tab === "pdv") return <PDV products={products} customers={customers} setCustomers={handleUpdateCustomers} sellers={sellers} sales={sales} setSales={handleUpdateSales} onSaleCompleted={fetchUserData} fiados={fiados} setFiados={handleUpdateFiados} {...{ cashbackPct, card, border, subtext, accent, text, dark }} />;     
         if (tab === "vendedores") return <Vendedores sellers={sellers} setSellers={handleUpdateSellers} {...{ sales, card, border, subtext, accent, text }} />;     
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
@@ -418,11 +450,21 @@ function SupplementSystem() {
         if (tab === "preTreino") return (
             <PreTreino 
                 clientes={customers} 
-                setClientes={handleUpdateCustomers} 
-                produtosPreTreino={preTreinoProducts} 
-                setProdutosPreTreino={handleUpdatePreTreinoProducts} 
+                setClientes={(newCusts) => {
+                    setCustomers(newCusts);
+                    localStorage.setItem("byse_customers", JSON.stringify(newCusts));
+                    handleUpdateCustomers(newCusts);
+                }} 
+                produtosPreTreino={products} // Usa a tabela centralizada products
+                setProdutosPreTreino={handleUpdateProducts} 
                 registros={preTreinoRecords} 
-                setRegistros={handleUpdatePreTreinoRecords} 
+                setRegistros={(newRecs) => {
+                    setPreTreinoRecords(newRecs);
+                    localStorage.setItem("byse_pre_treino_records", JSON.stringify(newRecs));
+                    handleUpdatePreTreinoRecords(newRecs);
+                }} 
+                API_URL={API_URL}
+                getAuthHeaders={getAuthHeaders}
                 {...{ card, border, subtext, accent, text, dark }} 
             />
         );

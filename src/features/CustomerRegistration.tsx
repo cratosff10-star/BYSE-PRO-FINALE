@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState } from "react";
-import { Save, User, Mail, Smartphone, CreditCard } from "lucide-react";
+import { Save, User, Mail, Smartphone, CreditCard, Calendar } from "lucide-react";
 import { inputStyle, lbl } from "../utils/helpers";
 
 export function CustomerRegistration({ onSave, onCancel, card, border, text, subtext, accent }) {
@@ -8,7 +8,8 @@ export function CustomerRegistration({ onSave, onCancel, card, border, text, sub
     name: "",
     cpf: "",
     email: "",
-    phone: ""
+    phone: "",
+    data_aniversario: ""
   });
 
   const handleChange = (e) => {
@@ -76,6 +77,21 @@ export function CustomerRegistration({ onSave, onCancel, card, border, text, sub
             <input 
               name="phone" value={form.phone} onChange={handleChange}
               placeholder="(00) 00000-0000"
+              style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
+            />
+          </div>
+        </div>
+
+        {/* DATA DE ANIVERSÁRIO */}
+        <div>
+          <label style={lbl(subtext)}>DATA DE ANIVERSÁRIO</label>
+          <div style={{ position: "relative" }}>
+            <Calendar size={16} style={{ position: "absolute", left: 10, top: 10, color: subtext }} />
+            <input 
+              type="date"
+              name="data_aniversario" 
+              value={form.data_aniversario} 
+              onChange={handleChange}
               style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
             />
           </div>
