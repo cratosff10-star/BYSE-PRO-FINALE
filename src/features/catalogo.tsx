@@ -64,33 +64,12 @@ import {
   MONTH_SHORT,
   WEEKDAY_LABELS,
   WEEKDAY_SHORT,
-  seedCustomers,
-  seedProducts,
-  seedSellers,
   paymentMethods,
-  HOUR_WEIGHTS,
-  DOW_WEIGHTS,
-  HOUR_SLOTS,
-  CHANNEL_WEIGHTS,
-  GENDER_WEIGHTS,
-  FULFILL_WEIGHTS,
-  PRESET_COLORS,
-  seedSales,
-  allSeedSales,
-  seedAdEntries,
-  seedFiados
+  PRESET_COLORS
 } from "../data/constants";
 
 import {
   money,
-  formatDateShort,
-  formatDateBadge,
-  formatDateLong,
-  inPeriod,
-  sameOrBefore,
-  sendWhatsAppMessage,
-  sendSMS,
-  fiadoDate,
   inputStyle,
   lbl,
   ghostBtn,
@@ -113,20 +92,9 @@ import {
   VipWelcome
 } from "../components/common";
 
-import type {
-  Product,
-  Customer,
-  Seller,
-  Sale,
-  StockLocation,
-  AdEntry,
-  WaScheduleEntry,
-  WelcomeConfig
-} from "../types";
-
 
 export function Catalogo({
-  products,
+  products: initialProducts,
   sales,
   card,
   border,
@@ -136,6 +104,7 @@ export function Catalogo({
   dark,
   device
 }) {
+  const [products, setProducts] = useState(initialProducts || []);
   const [showPrices, setShowPrices] = useState(true);
   const [banner, setBanner] = useState({
     storeName: "Minha Loja de Suplementos",
@@ -166,8 +135,31 @@ export function Catalogo({
     audioUrl: null
   });
 
+  // Se o usuário estiver acessando via link público na URL (ex: /catalogo/:userId)
+  useEffect(() => {
+    const pathParts = window.location.pathname.split('/');
+    const publicUserId = pathParts[pathParts.indexOf('catalogo') + 1];
+    
+    if (publicUserId) {
+      setPreviewMode(true);
+      fetch(`/api/public/catalogo/${publicUserId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.products) {
+            setProducts(data.products);
+          }
+          if (data && data.storeName) {
+            setBanner(b => ({ ...b, storeName: data.storeName }));
+          }
+        })
+        .catch(err => console.error("Erro ao carregar catálogo público:", err));
+    }
+  }, []);
+
   const categories = Array.from(new Set(products.map((p) => p.category)));
-  const catalogLink = "https://byse.app/catalogo/minha-loja";
+  const catalogLink = window.location.href.includes('/catalogo/') 
+    ? window.location.href 
+    : "https://byse.app/catalogo/1787335620584";
 
   const copyLink = () => {
     navigator.clipboard?.writeText(catalogLink);
@@ -268,8 +260,8 @@ export function Catalogo({
 
   const qtyByProduct = {};
   if (activeCategory) {
-    sales.forEach((s) =>
-      s.items.forEach((it) => {
+    (sales || []).forEach((s) =>
+      (s.items || []).forEach((it) => {
         if (activeProducts.some((p) => p.id === it.productId)) {
           qtyByProduct[it.productId] =
             (qtyByProduct[it.productId] || 0) + it.qty;
@@ -684,9 +676,6 @@ export function Catalogo({
                 ✓ Áudio carregado
               </div>
             )}
-            <div style={{ fontSize: 10, color: subtext, marginTop: 4 }}>
-              Alguns navegadores bloqueiam áudio automático se não tiver vindo de um clique — o clique em "Entrar" costuma liberar.
-            </div>
           </div>
 
           <button

@@ -1,4 +1,3 @@
-
 import express from 'express';
 import cors from 'cors';
 import cron from 'node-cron';
@@ -75,6 +74,56 @@ const authMiddleware = (req, res, next) => {
     req.user = { id: finalUserId };
     next();
 };
+
+// ==========================================
+// ROTAS PÚBLICAS DO CATÁLOGO (SEM AUTH)
+// ==========================================
+app.get('/api/public/catalogo/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        
+        // Buscar dados do usuário/loja
+        const userRes = await pool.query(
+            'SELECT id, name FROM users WHERE id = $1',
+            [userId]
+        );
+
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Loja não encontrada.' });
+        }
+
+        // Buscar produtos do usuário
+        const result = await pool.query(
+            'SELECT * FROM products WHERE user_id = $1',
+            [userId]
+        );
+        
+        const produtosFormatados = result.rows.map(p => ({
+            ...p,
+            cost: Number(p.cost || 0),
+            price: Number(p.price || 0),
+            imposto: Number(p.imposto || 0),
+            frete: Number(p.frete || 0),
+            controlStock: p.control_stock,
+            control_stock: p.control_stock,
+            vipPrice: p.vip_price !== null ? Number(p.vip_price) : null,
+            vip_price: p.vip_price !== null ? Number(p.vip_price) : null,
+            vipPrice3x: p.vip_price_3x !== null ? Number(p.vip_price_3x) : null,
+            vip_price_3x: p.vip_price_3x !== null ? Number(p.vip_price_3x) : null,
+            imageUrl: p.image_url,
+            image_url: p.image_url,
+            stocks: typeof p.stocks === 'string' ? JSON.parse(p.stocks || '{}') : (p.stocks || {})
+        }));
+
+        return res.status(200).json({
+            storeName: userRes.rows[0].name || 'Minha Loja',
+            products: produtosFormatados
+        });
+    } catch (error) {
+        console.error('Erro ao buscar catálogo público:', error);
+        return res.status(500).json({ error: 'Erro interno no servidor.' });
+    }
+});
 
 app.get('/api/user/whatsapp-config', authMiddleware, async (req, res) => {
     try {
@@ -1137,4 +1186,4 @@ cron.schedule('* * * * *', async () => {
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`)
-})
+});
