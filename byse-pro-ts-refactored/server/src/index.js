@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import cron from 'node-cron';
@@ -263,9 +264,6 @@ app.post('/api/whatsapp/send-now', authMiddleware, async (req, res) => {
     }
 });
 
-/**
- * Rotas de Clientes (Atualizadas com data_aniversario)
- */
 const handleGetCustomers = async (req, res) => {
     try {
         const result = await pool.query(
@@ -346,7 +344,7 @@ const handleGetProducts = async (req, res) => {
     try {
         const userId = req.user.id;
         const result = await pool.query(
-            'SELECT * FROM products WHERE user_id = $1 ORDER BY created_at DESC',
+            'SELECT * FROM products WHERE user_id = $1',
             [userId]
         );
         
@@ -437,9 +435,13 @@ const handlePostProduct = async (req, res) => {
             imposto: Number(savedProduct.imposto || 0),
             frete: Number(savedProduct.frete || 0),
             controlStock: savedProduct.control_stock,
+            control_stock: savedProduct.control_stock,
             vipPrice: savedProduct.vip_price !== null ? Number(savedProduct.vip_price) : null,
+            vip_price: savedProduct.vip_price !== null ? Number(savedProduct.vip_price) : null,
             vipPrice3x: savedProduct.vip_price_3x !== null ? Number(savedProduct.vip_price_3x) : null,
+            vip_price_3x: savedProduct.vip_price_3x !== null ? Number(savedProduct.vip_price_3x) : null,
             imageUrl: savedProduct.image_url,
+            image_url: savedProduct.image_url,
             stocks: typeof savedProduct.stocks === 'string' ? JSON.parse(savedProduct.stocks || '{}') : (savedProduct.stocks || {})
         });
     } catch (error) {
@@ -513,9 +515,13 @@ const handlePutProduct = async (req, res) => {
             imposto: Number(updatedProduct.imposto || 0),
             frete: Number(updatedProduct.frete || 0),
             controlStock: updatedProduct.control_stock,
+            control_stock: updatedProduct.control_stock,
             vipPrice: updatedProduct.vip_price !== null ? Number(updatedProduct.vip_price) : null,
+            vip_price: updatedProduct.vip_price !== null ? Number(updatedProduct.vip_price) : null,
             vipPrice3x: updatedProduct.vip_price_3x !== null ? Number(updatedProduct.vip_price_3x) : null,
+            vip_price_3x: updatedProduct.vip_price_3x !== null ? Number(updatedProduct.vip_price_3x) : null,
             imageUrl: updatedProduct.image_url,
+            image_url: updatedProduct.image_url,
             stocks: typeof updatedProduct.stocks === 'string' ? JSON.parse(updatedProduct.stocks || '{}') : (updatedProduct.stocks || {})
         });
     } catch (error) {
@@ -1130,5 +1136,5 @@ cron.schedule('* * * * *', async () => {
 
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
+    console.log(`Servidor rodando na porta ${PORT}`)
+})

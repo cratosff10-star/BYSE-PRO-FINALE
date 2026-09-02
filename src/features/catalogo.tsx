@@ -290,7 +290,6 @@ export function Catalogo({
         subtext={subtext}
       />
 
-      {/* Bloco com o Link público de acesso ao catálogo */}
       <div
         style={{
           background: card,
@@ -775,8 +774,6 @@ export function Catalogo({
               const per3x =
                 p.vipPrice3x != null
                   ? p.vipPrice3x
-                  : p.vipPrice != null
-                  ? p.vipPrice / 3
                   : null;
 
               return (
@@ -901,12 +898,12 @@ export function Catalogo({
                             color: subtext
                           }}
                         >
-                          à vista
+                          Valor Vip À VISTA
                         </span>
                       </div>
-                      {per3x && (
-                        <div style={{ fontSize: 11, color: subtext }}>
-                          ou 3x de {money(per3x)} sem juros
+                      {per3x != null && (
+                        <div style={{ fontSize: 11, color: SUCCESS, fontWeight: 600, marginTop: 2 }}>
+                          ou 3x de {money(per3x)} sem juros (VIP)
                         </div>
                       )}
                       <div

@@ -220,25 +220,31 @@ function SupplementSystem() {
         }
     };
 
-    const handleUpdateProducts = async (newProducts) => {
-        const latestProduct = Array.isArray(newProducts) && newProducts.length > 0 ? newProducts[newProducts.length - 1] : null;
+    const handleUpdateProducts = async (newProductsOrProduct) => {
+        // Suporta tanto o array completo quanto um produto individual enviado diretamente
+        const latestProduct = Array.isArray(newProductsOrProduct) 
+            ? (newProductsOrProduct.length > 0 ? newProductsOrProduct[newProductsOrProduct.length - 1] : null)
+            : newProductsOrProduct;
 
         if (latestProduct) {
             try {
                 const response = await fetch(`${API_URL}/products`, {
                     method: "POST",
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({
-                        id: latestProduct.id || `prod_${Date.now()}`,
-                        name: latestProduct.name,
-                        category: latestProduct.category || "Geral",
-                        price: Number(latestProduct.price || 0),
-                        barcode: latestProduct.barcode || ""
-                    })
+                    body: JSON.stringify(latestProduct)
                 });
                 if (response.ok) {
-                    setProducts([...newProducts]);
-                    localStorage.setItem("byse_products", JSON.stringify(newProducts));
+                    const savedData = await response.json();
+                    const finalProduct = savedData.id ? savedData : latestProduct;
+                    
+                    setProducts(prev => {
+                        const exists = prev.some(p => p.id === finalProduct.id);
+                        const updated = exists 
+                            ? prev.map(p => p.id === finalProduct.id ? finalProduct : p)
+                            : [...prev, finalProduct];
+                        localStorage.setItem("byse_products", JSON.stringify(updated));
+                        return updated;
+                    });
                 }
             } catch (err) {
                 console.error("Erro ao salvar produto no banco:", err);
@@ -274,20 +280,14 @@ function SupplementSystem() {
             });
 
             if (response.ok) {
-                const updatedProducts = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+                const savedData = await response.json();
+                const finalProduct = savedData.id ? savedData : updatedProduct;
+                const updatedProducts = products.map(p => p.id === finalProduct.id ? finalProduct : p);
                 setProducts(updatedProducts);
                 localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
             } else {
-                const fallbackResponse = await fetch(`${API_URL}/products`, {
-                    method: "POST",
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify(updatedProduct)
-                });
-                if (fallbackResponse.ok) {
-                    const updatedProducts = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
-                    setProducts(updatedProducts);
-                    localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
-                }
+                // Fallback para POST se a rota PUT não existir ou retornar erro
+                await handleUpdateProducts(updatedProduct);
             }
         } catch (err) {
             console.error("Erro ao atualizar produto:", err);
@@ -455,7 +455,7 @@ function SupplementSystem() {
                     localStorage.setItem("byse_customers", JSON.stringify(newCusts));
                     handleUpdateCustomers(newCusts);
                 }} 
-                produtosPreTreino={products} // Usa a tabela centralizada products
+                produtosPreTreino={products}
                 setProdutosPreTreino={handleUpdateProducts} 
                 registros={preTreinoRecords} 
                 setRegistros={(newRecs) => {

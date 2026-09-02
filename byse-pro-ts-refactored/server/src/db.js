@@ -57,8 +57,12 @@ export async function initDb() {
       description TEXT,
       control_stock BOOLEAN DEFAULT TRUE,
       image_url TEXT,
-      stocks JSONB DEFAULT '{}'
+      stocks JSONB DEFAULT '{}',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS vip_price_3x NUMERIC;
 
     CREATE TABLE IF NOT EXISTS stock_locations (
       id VARCHAR(255) PRIMARY KEY,
@@ -146,15 +150,6 @@ export async function initDb() {
       horario VARCHAR(50),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS horario VARCHAR(50);
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS customer_id VARCHAR(255);
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS nome_cliente VARCHAR(255);
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS produto_id VARCHAR(255);
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS nome_produto VARCHAR(255);
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS custo NUMERIC DEFAULT 0;
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS data VARCHAR(50);
   `);
   console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
 }

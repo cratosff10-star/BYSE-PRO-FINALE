@@ -1,61 +1,155 @@
-import Database from 'better-sqlite3';
-import path from 'node:path';
-import fs from 'node:fs';
+import pg from 'pg';
+import 'dotenv/config';
 
-const dataDir = path.resolve(process.env.DATA_DIR ?? './server/data');
-fs.mkdirSync(dataDir, { recursive: true });
+const { Pool } = pg;
 
-export const db = new Database(path.join(dataDir, 'byse-pro.sqlite'));
-db.pragma('journal_mode = WAL');
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+export async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(255) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      whatsapp_api_url TEXT,
+      whatsapp_api_key TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_api_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_api_key TEXT;
 
-CREATE TABLE IF NOT EXISTS customers (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  phone TEXT NOT NULL,
-  whatsapp_opt_in INTEGER NOT NULL DEFAULT 0,
-  reminders_enabled INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+    CREATE TABLE IF NOT EXISTS customers (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50) NOT NULL,
+      cpf VARCHAR(50),
+      data_aniversario DATE,
+      cashback NUMERIC DEFAULT 0,
+      status VARCHAR(100) DEFAULT 'Ativo',
+      whatsapp_opt_in INT DEFAULT 0,
+      reminders_enabled INT DEFAULT 1,
+      status_mensalidade VARCHAR(100) DEFAULT 'Pendente (Não Pago)',
+      data_vencimento DATE,
+      valor_mensalidade NUMERIC DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-CREATE TABLE IF NOT EXISTS purchases (
-  id TEXT PRIMARY KEY,
-  customer_id TEXT NOT NULL,
-  total REAL NOT NULL,
-  items_json TEXT NOT NULL,
-  purchased_at TEXT NOT NULL,
-  FOREIGN KEY(customer_id) REFERENCES customers(id)
-);
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_aniversario DATE;
 
-CREATE TABLE IF NOT EXISTS reminder_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  customer_id TEXT NOT NULL,
-  scheduled_date TEXT NOT NULL,
-  sent_at TEXT NOT NULL,
-  status TEXT NOT NULL,
-  message TEXT,
-  error TEXT,
-  UNIQUE(customer_id, scheduled_date),
-  FOREIGN KEY(customer_id) REFERENCES customers(id)
-);
+    CREATE TABLE IF NOT EXISTS products (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      category VARCHAR(255),
+      barcode VARCHAR(255),
+      code VARCHAR(255),
+      cost NUMERIC DEFAULT 0,
+      price NUMERIC DEFAULT 0,
+      imposto NUMERIC DEFAULT 0,
+      frete NUMERIC DEFAULT 0,
+      vip_price NUMERIC,
+      vip_price_3x NUMERIC,
+      description TEXT,
+      control_stock BOOLEAN DEFAULT TRUE,
+      image_url TEXT,
+      stocks JSONB DEFAULT '{}',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-CREATE TABLE IF NOT EXISTS reminder_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  enabled INTEGER NOT NULL DEFAULT 1,
-  first_day TEXT NOT NULL DEFAULT 'tuesday',
-  second_day TEXT NOT NULL DEFAULT 'friday',
-  hour INTEGER NOT NULL DEFAULT 10,
-  minute INTEGER NOT NULL DEFAULT 0,
-  template TEXT NOT NULL DEFAULT 'Oi {nome}! 👋\n\nPassando para lembrar da sua última compra: {produtos}.\n\nSe precisar de reposição ou quiser conferir novidades, fale conosco por aqui. 💬\n\nAté breve!'
-);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS vip_price_3x NUMERIC;
 
-INSERT OR IGNORE INTO reminder_settings (id) VALUES (1);
-`);
+    CREATE TABLE IF NOT EXISTS stock_locations (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_schedules (
+      id SERIAL PRIMARY KEY,
+      user_id VARCHAR(255),
+      schedule_index INT,
+      days_of_week TEXT[],
+      send_time TIME NOT NULL,
+      message_template TEXT,
+      send_to_all BOOLEAN DEFAULT TRUE,
+      customer_ids TEXT[],
+      enabled BOOLEAN DEFAULT FALSE,
+      CONSTRAINT unique_user_schedule UNIQUE (user_id, schedule_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS sales (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      customer_id VARCHAR(255),
+      customer_name VARCHAR(255),
+      seller VARCHAR(255),
+      payment_method VARCHAR(100),
+      discount NUMERIC DEFAULT 0,
+      subtotal NUMERIC DEFAULT 0,
+      total NUMERIC DEFAULT 0,
+      gender VARCHAR(50),
+      sales_channel VARCHAR(100),
+      delivery_type VARCHAR(100),
+      items JSONB DEFAULT '[]',
+      date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sellers (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      commission_pct NUMERIC DEFAULT 5,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    ALTER TABLE sellers ADD COLUMN IF NOT EXISTS commission_pct NUMERIC DEFAULT 5;
+
+    CREATE TABLE IF NOT EXISTS fiados (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      customer_id VARCHAR(255),
+      customer_name VARCHAR(255),
+      products TEXT,
+      origin VARCHAR(50) DEFAULT 'manual',
+      installments JSONB DEFAULT '[]',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS pre_treino (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      exercises JSONB DEFAULT '[]',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS pre_treino_produtos (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      name VARCHAR(255) NOT NULL,
+      cost NUMERIC DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS pre_treino_registros (
+      id VARCHAR(255) PRIMARY KEY,
+      user_id VARCHAR(255),
+      customer_id VARCHAR(255),
+      nome_cliente VARCHAR(255),
+      produto_id VARCHAR(255),
+      nome_produto VARCHAR(255),
+      custo NUMERIC DEFAULT 0,
+      data VARCHAR(50),
+      horario VARCHAR(50),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
+}

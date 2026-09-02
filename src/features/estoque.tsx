@@ -10,6 +10,8 @@ export function Estoque({
   setProducts,
   stockLocations,
   setStockLocations,
+  onDeleteProduct,
+  onEditProduct,
   card,
   border,
   subtext,
@@ -20,46 +22,6 @@ export function Estoque({
   const [newLocName, setNewLocName] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-
-  const getApiUrl = () => {
-    if (import.meta.env.VITE_API_URL) {
-        const raw = import.meta.env.VITE_API_URL;
-        return raw.endsWith('/api') ? raw : `${raw.endsWith('/') ? raw.slice(0, -1) : raw}/api`;
-    }
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:3333/api';
-    }
-    return 'https://byse-pro-finale-production.up.railway.app/api';
-  };
-
-  const API_URL = getApiUrl();
-
-  useEffect(() => {
-    const fetchEstoqueData = async () => {
-      const token = localStorage.getItem("byse_token");
-      const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
-
-      try {
-        const [resProd, resLoc] = await Promise.all([
-          fetch(`${API_URL}/products`, { headers }),
-          fetch(`${API_URL}/stock_locations`, { headers }).catch(() => null)
-        ]);
-
-        if (resProd.ok) {
-          const data = await resProd.json();
-          if (Array.isArray(data)) setProducts(data);
-        }
-        if (resLoc && resLoc.ok) {
-          const locData = await resLoc.json();
-          if (Array.isArray(locData) && locData.length > 0) setStockLocations(locData);
-        }
-      } catch (error) {
-        console.error("Erro ao buscar dados de estoque:", error);
-      }
-    };
-
-    fetchEstoqueData();
-  }, []);
 
   const blankForm = {
     name: "",
@@ -167,58 +129,27 @@ export function Estoque({
       stocks: stocksObj
     };
 
-    const token = localStorage.getItem("byse_token");
-
-    try {
-      const endpoint = editingId ? `${API_URL}/products/${editingId}` : `${API_URL}/products`;
-      const method = editingId ? "PUT" : "POST";
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(built)
-      });
-
-      if (response.ok) {
-        const savedData = await response.json();
-        const updatedList = editingId
-          ? products.map((p) => (p.id === editingId ? (savedData.id ? savedData : built) : p))
-          : [...products, (savedData.id ? savedData : built)];
-
-        setProducts(updatedList);
-        localStorage.setItem("byse_products", JSON.stringify(updatedList));
-        cancelForm();
-      } else {
-        const errJson = await response.json().catch(() => ({}));
-        console.error("Erro retornado pela API:", errJson);
-        alert("Erro ao salvar produto. Verifique os dados.");
+    if (editingId) {
+      if (onEditProduct) {
+        await onEditProduct(built);
       }
-    } catch (error) {
-      console.error("Erro ao salvar produto:", error);
+    } else {
+      const updatedList = [...products, built];
+      if (setProducts) {
+        setProducts(updatedList);
+      }
     }
+    cancelForm();
   };
 
   const removeProduct = async (id) => {
     if (!confirm("Deseja realmente remover este produto?")) return;
-    const token = localStorage.getItem("byse_token");
-
-    try {
-      const response = await fetch(`${API_URL}/products/${id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const filtered = products.filter((p) => p.id !== id);
-        setProducts(filtered);
-        localStorage.setItem("byse_products", JSON.stringify(filtered));
-      }
-    } catch (error) {
-      console.error("Erro ao remover produto:", error);
+    if (onDeleteProduct) {
+      await onDeleteProduct(id);
     }
   };
 
-  const gridCols = `2fr 1fr 0.7fr 0.7fr 0.7fr ${stockLocations
+  const gridCols = `2fr 1fr 0.7fr 0.7fr 0.8fr 0.8fr ${stockLocations
     .map(() => "0.9fr")
     .join(" ")} 0.6fr`;
 
@@ -226,7 +157,7 @@ export function Estoque({
     <div>
       <SectionTitle
         title="Controle de estoque"
-        sub="Múltiplos pontos de estoque — nomes editáveis com Preço VIP"
+        sub="Múltiplos pontos de estoque — Valor Vip À VISTA e VIP 3x s/ juros"
         subtext={subtext}
       />
 
@@ -386,11 +317,20 @@ export function Estoque({
               style={inputStyle(border, text)}
             />
             <input
-              placeholder="Preço VIP (R$)"
+              placeholder="Valor Vip À VISTA (R$)"
               type="number"
               value={form.vipPrice}
               onChange={(e) =>
                 setForm({ ...form, vipPrice: e.target.value })
+              }
+              style={{ ...inputStyle(border, text), borderColor: accent }}
+            />
+            <input
+              placeholder="Valor VIP 3x s/ juros (R$)"
+              type="number"
+              value={form.vipPrice3x}
+              onChange={(e) =>
+                setForm({ ...form, vipPrice3x: e.target.value })
               }
               style={{ ...inputStyle(border, text), borderColor: accent }}
             />
@@ -610,22 +550,24 @@ export function Estoque({
             fontWeight: 700,
             borderBottom: `1px solid ${border}`,
             textTransform: "uppercase",
-            minWidth: 620
+            minWidth: 700
           }}
         >
           <div>Produto</div>
           <div>Categoria</div>
           <div>Custo</div>
           <div>Venda</div>
-          <div>VIP</div>
+          <div>VIP À Vista</div>
+          <div>VIP 3x</div>
           {stockLocations.map((l) => (
             <div key={l.id}>{l.name}</div>
           ))}
           <div></div>
         </div>
 
-        {products.map((p, i) => {
+        {Array.isArray(products) && products.map((p, i) => {
           const pVipPrice = p.vip_price !== undefined ? p.vip_price : p.vipPrice;
+          const pVipPrice3x = p.vip_price_3x !== undefined ? p.vip_price_3x : p.vipPrice3x;
           const pControlStock = p.control_stock !== undefined ? p.control_stock : p.controlStock;
           
           return (
@@ -639,7 +581,7 @@ export function Estoque({
                 alignItems: "center",
                 borderBottom:
                   i < products.length - 1 ? `1px solid ${border}` : "none",
-                minWidth: 620
+                minWidth: 700
               }}
             >
               <div style={{ fontWeight: 600 }}>
@@ -662,6 +604,7 @@ export function Estoque({
               <div>{money(p.cost)}</div>
               <div style={{ fontWeight: 700 }}>{money(p.price)}</div>
               <div style={{ fontWeight: 700, color: accent }}>{pVipPrice != null ? money(pVipPrice) : "—"}</div>
+              <div style={{ fontWeight: 700, color: accent }}>{pVipPrice3x != null ? money(pVipPrice3x) : "—"}</div>
 
               {stockLocations.map((l) => (
                 <div key={l.id}>
