@@ -159,7 +159,7 @@ export function Catalogo({
   const categories = Array.from(new Set(products.map((p) => p.category)));
   const catalogLink = window.location.href.includes('/catalogo/') 
     ? window.location.href 
-    : "https://byse.app/catalogo/1787335620584";
+    : "https://byse-pro-finale-nowo-seven.vercel.app/catalogo/1787335620584";
 
   const copyLink = () => {
     navigator.clipboard?.writeText(catalogLink);
@@ -812,7 +812,7 @@ export function Catalogo({
                         src={p.imageUrl}
                         alt={p.name}
                         style={{
-                          width: "100%",
+                          width: "50%",
                           height: "100%",
                           objectFit: "cover"
                         }}
