@@ -9,7 +9,7 @@ import { Clientes } from "../features/clientes";
 import { Estoque } from "../features/estoque"; 
 import { PDV } from "../features/pdv"; 
 import { Vendedores } from "../features/vendedores"; 
-import { Catalogo } from "../features/catalogo"; 
+import  Catalogo  from "../features/catalogo"; 
 import { Cashback } from "../features/cashback"; 
 import { WhatsApp } from "../features/whatsapp"; 
 import { TrafegoPago, CanaisDeVenda } from "../features/marketing"; 
@@ -52,8 +52,9 @@ function SupplementSystem() {
     const [adEntries, setAdEntries] = useState([]);
     const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);
 
-    // Estados de pré-treino focados exclusivamente em registros de consumo
+    // Estados dedicados ao Pré-Treino (Registros e Produtos específicos)
     const [preTreinoRecords, setPreTreinoRecords] = useState([]);
+    const [produtosPreTreino, setProdutosPreTreino] = useState([]);
 
     const [cashbackPct, setCashbackPct] = useState(3);   
     const [cashbackValidityDays, setCashbackValidityDays] = useState(90);   
@@ -94,7 +95,8 @@ function SupplementSystem() {
                         customerId: s.customerId || s.customer_id || s.customer || null,
                         customer_id: s.customer_id || s.customerId || s.customer || null,
                         customerName: s.customerName || s.customer_name || 'Cliente Geral',
-                        customer_name: s.customer_name || s.customerName || 'Cliente Geral'
+                        customer_name: s.customer_name || s.customerName || 'Cliente Geral',
+                        gender: s.gender || s.genders || 'Prefiro não informar'
                     }));
                     setSales([...normalizedSales]);
                     localStorage.setItem("byse_sales", JSON.stringify(normalizedSales));
@@ -128,13 +130,23 @@ function SupplementSystem() {
                 }
             }
 
-            // Sincronização de Registros de Pré-Treino (tabela pre_treino_registros)
+            // Sincronização de Registros de Pré-Treino
             const resPtRecs = await fetch(`${API_URL}/pre-treino/records`, { headers });
             if (resPtRecs.ok) {
                 const data = await resPtRecs.json();
                 if (Array.isArray(data)) {
                     setPreTreinoRecords([...data]);
                     localStorage.setItem("byse_pre_treino_records", JSON.stringify(data));
+                }
+            }
+
+            // Sincronização de Produtos de Pré-Treino
+            const resPtProds = await fetch(`${API_URL}/pre-treino/products`, { headers });
+            if (resPtProds.ok) {
+                const data = await resPtProds.json();
+                if (Array.isArray(data)) {
+                    setProdutosPreTreino([...data]);
+                    localStorage.setItem("byse_pre_treino_products", JSON.stringify(data));
                 }
             }
         } catch (err) {
@@ -151,9 +163,8 @@ function SupplementSystem() {
         return () => clearInterval(interval);
     }, [user]);
 
-    // Garante o carregamento imediato do banco de dados logo na inicialização se o usuário estiver autenticado ou acessando rota pública
+    // Garante o carregamento imediato do banco de dados logo na inicialização
     useEffect(() => {
-        // Verifica se a URL atual é do tipo /catalogo/ID_DO_USUARIO
         const path = window.location.pathname;
         const match = path.match(/^\/catalogo\/([^/]+)$/);
 
@@ -161,7 +172,6 @@ function SupplementSystem() {
             const storeUserId = match[1];
             setIsPublicCatalog(true);
             
-            // Busca os produtos e nome da loja publicamente do backend
             fetch(`${API_URL}/public/catalogo/${storeUserId}`)
                 .then(res => res.json())
                 .then(data => {
@@ -211,6 +221,7 @@ function SupplementSystem() {
         localStorage.removeItem("byse_sellers");
         localStorage.removeItem("byse_fiados");
         localStorage.removeItem("byse_pre_treino_records");
+        localStorage.removeItem("byse_pre_treino_products");
         setUser(null);
         setCustomers([]);
         setSales([]);
@@ -218,6 +229,7 @@ function SupplementSystem() {
         setSellers([]);
         setFiados([]);
         setPreTreinoRecords([]);
+        setProdutosPreTreino([]);
     };
 
     const handleUpdateCustomers = async (newCustomers) => {
@@ -388,6 +400,7 @@ function SupplementSystem() {
                         payment_method: latestSale.payment_method || latestSale.paymentMethod || 'Pix',
                         sales_channel: latestSale.sales_channel || latestSale.salesChannel || latestSale.channel || 'Loja física',
                         delivery_type: latestSale.delivery_type || latestSale.deliveryType || latestSale.fulfillment || 'Retirada',
+                        gender: latestSale.gender || latestSale.genders || 'Prefiro não informar',
                         date: latestSale.date || new Date().toISOString()
                     })
                 });
@@ -423,6 +436,28 @@ function SupplementSystem() {
         }
     };
 
+    const handleUpdatePreTreinoProducts = async (newProds) => {
+        const latest = Array.isArray(newProds) && newProds.length > 0 ? newProds[newProds.length - 1] : null;
+        if (latest) {
+            try {
+                const response = await fetch(`${API_URL}/pre-treino/products`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify(latest)
+                });
+                if (response.ok) {
+                    setProdutosPreTreino([...newProds]);
+                    localStorage.setItem("byse_pre_treino_products", JSON.stringify(newProds));
+                }
+            } catch (err) {
+                console.error("Erro ao salvar produto de pré-treino:", err);
+            }
+        } else {
+            setProdutosPreTreino([...newProds]);
+            localStorage.setItem("byse_pre_treino_products", JSON.stringify(newProds));
+        }
+    };
+
     const bg = dark ? "#0C0C0C" : "#F5F3EE";   
     const card = dark ? "#1C1C1C" : "#FFFFFF";   
     const card2 = dark ? "#141414" : "#FBFAF7";   
@@ -438,7 +473,6 @@ function SupplementSystem() {
         );
     }
 
-    // SE FOR UM ACESSO PÚBLICO AO CATÁLOGO:
     if (isPublicCatalog) {
         return (
             <div style={{ minHeight: "100vh", background: "#0C0C0C", color: "#F0EFE9", padding: "20px", fontFamily: FONT_BODY }}>
@@ -517,17 +551,12 @@ function SupplementSystem() {
                     localStorage.setItem("byse_customers", JSON.stringify(newCusts));
                     handleUpdateCustomers(newCusts);
                 }} 
-                produtosPreTreino={products.filter(p => p.category && p.category.toLowerCase().includes("pré-treino"))}
-                setProdutosPreTreino={(prodOrList) => {
-                    const prod = Array.isArray(prodOrList) ? prodOrList[prodOrList.length - 1] : prodOrList;
-                    if (prod) {
-                        const productWithCategory = {
-                            ...prod,
-                            category: prod.category && prod.category.trim() !== "" ? prod.category : "Pré-Treino"
-                        };
-                        handleUpdateProducts(productWithCategory);
-                    }
-                }} 
+                produtosPreTreino={produtosPreTreino}
+                setProdutosPreTreino={(newProds) => {
+                    setProdutosPreTreino(newProds);
+                    localStorage.setItem("byse_pre_treino_products", JSON.stringify(newProds));
+                    handleUpdatePreTreinoProducts(newProds);
+                }}
                 registros={preTreinoRecords} 
                 setRegistros={(newRecs) => {
                     setPreTreinoRecords(newRecs);

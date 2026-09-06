@@ -58,18 +58,19 @@ export function PreTreino({
     }
   };
 
-  const clientesParaConsumo = (clientes || []).filter(c => c.statusMensalidade === 'Pago');
-  const clientesValidosCusto = (clientes || []).filter(c => c.statusMensalidade !== 'Inativo');
-  const totalCustoPreTreinosMes = (registros || []).reduce((acc, curr) => acc + (curr.cost || curr.custo || 0), 0);
-  const totalValorMensalidades = clientesValidosCusto.reduce((acc, curr) => acc + Number(curr.valorMensalidade || 0), 0); 
+  const clientesParaConsumo = (clientes || []).filter(c => (c.statusMensalidade || c.status_mensalidade) === 'Pago');
+  const clientesValidosCusto = (clientes || []).filter(c => (c.statusMensalidade || c.status_mensalidade) !== 'Inativo');
+  const totalCustoPreTreinosMes = (registros || []).reduce((acc, curr) => acc + Number(curr.cost || curr.custo || 0), 0);
+  const totalValorMensalidades = clientesValidosCusto.reduce((acc, curr) => acc + Number(curr.valorMensalidade || curr.valor_mensalidade || 0), 0); 
   const custoGeralTotalMes = totalCustoPreTreinosMes + totalValorMensalidades;
 
   const clientesFiltrados = (clientes || []).filter(c => {
-    const infoVenc = verificarVencimento(c.dataVencimento);
-    if (filtroClientes === 'ativos') return c.statusMensalidade === 'Pago';
-    if (filtroClientes === 'naoPagos') return c.statusMensalidade?.includes('Pendente') || c.statusMensalidade?.includes('Não Pago');
-    if (filtroClientes === 'aVencer') return infoVenc.dias >= 0 && infoVenc.dias <= 4 && c.statusMensalidade !== 'Pago';
-    if (filtroClientes === 'inativos') return c.statusMensalidade === 'Inativo';
+    const statusM = c.statusMensalidade || c.status_mensalidade;
+    const infoVenc = verificarVencimento(c.dataVencimento || c.data_vencimento);
+    if (filtroClientes === 'ativos') return statusM === 'Pago';
+    if (filtroClientes === 'naoPagos') return statusM?.includes('Pendente') || statusM?.includes('Não Pago');
+    if (filtroClientes === 'aVencer') return infoVenc.dias >= 0 && infoVenc.dias <= 4 && statusM !== 'Pago';
+    if (filtroClientes === 'inativos') return statusM === 'Inativo';
     return true;
   });
 
@@ -80,10 +81,15 @@ export function PreTreino({
     const payload = {
       id: `cli_pre_${Date.now()}`,
       name: novoNomeCliente,
+      nome: novoNomeCliente,
+      phone: novoTelefoneCliente,
       telefone: novoTelefoneCliente,
       status_mensalidade: 'Pendente (Não Pago)',
+      statusMensalidade: 'Pendente (Não Pago)',
       data_vencimento: novoVencimentoCliente || obterDataUmMesAdiantado(),
-      valor_mensalidade: Number(novoValorMensalidade) || 0
+      dataVencimento: novoVencimentoCliente || obterDataUmMesAdiantado(),
+      valor_mensalidade: Number(novoValorMensalidade) || 0,
+      valorMensalidade: Number(novoValorMensalidade) || 0
     };
 
     try {
@@ -100,16 +106,7 @@ export function PreTreino({
         }
       }
 
-      const novoClienteFormatado = {
-        ...payload,
-        nome: payload.name,
-        phone: payload.telefone,
-        statusMensalidade: payload.status_mensalidade,
-        dataVencimento: payload.data_vencimento,
-        valorMensalidade: payload.valor_mensalidade
-      };
-
-      setClientes([...(clientes || []), novoClienteFormatado]);
+      setClientes([...(clientes || []), payload]);
       setNovoNomeCliente('');
       setNovoTelefoneCliente('');
       setNovoValorMensalidade('90.00');
@@ -126,16 +123,22 @@ export function PreTreino({
       if (!clienteAlvo) return;
 
       const payload = {
+        id: clienteAlvo.id,
         name: clienteAlvo.nome || clienteAlvo.name,
+        nome: clienteAlvo.nome || clienteAlvo.name,
         phone: clienteAlvo.telefone || clienteAlvo.phone,
+        telefone: clienteAlvo.telefone || clienteAlvo.phone,
         status_mensalidade: novoStatus,
-        data_vencimento: clienteAlvo.dataVencimento,
-        valor_mensalidade: clienteAlvo.valorMensalidade
+        statusMensalidade: novoStatus,
+        data_vencimento: clienteAlvo.dataVencimento || clienteAlvo.data_vencimento,
+        dataVencimento: clienteAlvo.dataVencimento || clienteAlvo.data_vencimento,
+        valor_mensalidade: clienteAlvo.valorMensalidade || clienteAlvo.valor_mensalidade,
+        valorMensalidade: clienteAlvo.valorMensalidade || clienteAlvo.valor_mensalidade
       };
 
       const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
       if (API_URL) {
-        const response = await fetch(`${API_URL}/customers/${clienteId}`, {
+        const response = await fetch(`${API_URL}/customers`, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload)
@@ -149,14 +152,14 @@ export function PreTreino({
 
       const atualizados = (clientes || []).map(c => {
         if (c.id === clienteId) {
-          return { ...c, statusMensalidade: novoStatus };
+          return { ...c, statusMensalidade: novoStatus, status_mensalidade: novoStatus };
         }
         return c;
       });
       setClientes(atualizados);
       
       if (clienteSelecionadoDetalhes && clienteSelecionadoDetalhes.id === clienteId) {
-        setClienteSelecionadoDetalhes({ ...clienteSelecionadoDetalhes, statusMensalidade: novoStatus });
+        setClienteSelecionadoDetalhes({ ...clienteSelecionadoDetalhes, statusMensalidade: novoStatus, status_mensalidade: novoStatus });
       }
     } catch (error) {
       console.error("Erro ao persistir a atualização de status:", error);
@@ -196,7 +199,9 @@ export function PreTreino({
     const payload = {
       id: `prod_pre_${Date.now()}`,
       name: novoNomeProduto,
-      cost: Number(novoCustoProduto)
+      nome: novoNomeProduto,
+      cost: Number(novoCustoProduto),
+      custo: Number(novoCustoProduto)
     };
 
     try {
@@ -217,13 +222,7 @@ export function PreTreino({
       console.error("Erro de conexão ao cadastrar produto de pré-treino:", error);
     }
 
-    const produtoFormatado = {
-      ...payload,
-      nome: payload.name,
-      custo: payload.cost
-    };
-
-    const atualizados = [...(produtosPreTreino || []), produtoFormatado];
+    const atualizados = [...(produtosPreTreino || []), payload];
     setProdutosPreTreino(atualizados);
     setNovoNomeProduto('');
     setNovoCustoProduto('');
@@ -266,7 +265,8 @@ export function PreTreino({
       const clienteSelecionado = (clientes || []).find(c => c.id === novoClienteId);
       if (!clienteSelecionado) return;
 
-      if (clienteSelecionado.statusMensalidade !== 'Pago') {
+      const statusM = clienteSelecionado.statusMensalidade || clienteSelecionado.status_mensalidade;
+      if (statusM !== 'Pago') {
         setErroConsumo(`Não é possível lançar o pré-treino. O cliente ${clienteSelecionado.nome || clienteSelecionado.name} precisa estar com a mensalidade "Paga".`);
         return;
       }
@@ -288,11 +288,16 @@ export function PreTreino({
     const payloadRegistro = {
       id: `pt_rec_${Date.now()}`,
       customerId: idClienteFinal,
+      customer_id: idClienteFinal,
       customerName: nomeClienteFinal,
+      nomeCliente: nomeClienteFinal,
       productId: produtoSelecionado.id,
       productName: produtoSelecionado.nome || produtoSelecionado.name,
+      nomeProduto: produtoSelecionado.nome || produtoSelecionado.name,
       cost: Number(produtoSelecionado.custo || produtoSelecionado.cost || 0),
+      custo: Number(produtoSelecionado.custo || produtoSelecionado.cost || 0),
       date: agora.toISOString().split('T')[0],
+      data: agora.toISOString().split('T')[0],
       horario: agora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -509,18 +514,19 @@ export function PreTreino({
                   <tr><td colSpan={3} style={{ padding: 15, textAlign: 'center', fontSize: 12, color: subtext }}>Nenhum cliente encontrado.</td></tr>
                 ) : (
                   clientesFiltrados.map(c => {
-                    const infoVenc = verificarVencimento(c.dataVencimento);
+                    const statusM = c.statusMensalidade || c.status_mensalidade;
+                    const infoVenc = verificarVencimento(c.dataVencimento || c.data_vencimento);
                     let corStatus = '#f87171';
-                    if (c.statusMensalidade === 'Pago') corStatus = '#4ade80';
-                    if (c.statusMensalidade === 'Inativo') corStatus = '#9ca3af';
+                    if (statusM === 'Pago') corStatus = '#4ade80';
+                    if (statusM === 'Inativo') corStatus = '#9ca3af';
 
                     return (
                       <tr key={c.id} onClick={() => setClienteSelecionadoDetalhes(c)} style={{ borderBottom: `1px solid ${borderColor}`, cursor: 'pointer', transition: 'background 0.2s' }}>
                         <td style={{ padding: 10, fontSize: 13, color: text, fontWeight: 'bold' }}>{c.nome || c.name}</td>
-                        <td style={{ padding: 10, fontSize: 13, color: accent, fontWeight: 'bold' }}>R$ {Number(c.valorMensalidade || 0).toFixed(2)}</td>
+                        <td style={{ padding: 10, fontSize: 13, color: accent, fontWeight: 'bold' }}>R$ {Number(c.valorMensalidade || c.valor_mensalidade || 0).toFixed(2)}</td>
                         <td style={{ padding: 10, fontSize: 12 }}>
-                          <span style={{ color: corStatus, fontWeight: 'bold', marginRight: 8 }}>{c.statusMensalidade}</span>
-                          {c.statusMensalidade !== 'Pago' && c.statusMensalidade !== 'Inativo' && infoVenc.alerta && (
+                          <span style={{ color: corStatus, fontWeight: 'bold', marginRight: 8 }}>{statusM}</span>
+                          {statusM !== 'Pago' && statusM !== 'Inativo' && infoVenc.alerta && (
                             <span style={{ backgroundColor: '#ef444422', color: '#f87171', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 'bold' }}>⚠️ {infoVenc.texto}</span>
                           )}
                         </td>
@@ -544,16 +550,16 @@ export function PreTreino({
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ fontSize: 13, color: subtext }}>Telefone: {clienteSelecionadoDetalhes.telefone || clienteSelecionadoDetalhes.phone}</div>
-              <div style={{ fontSize: 13, color: subtext }}>Valor da Mensalidade: <b style={{ color: accent }}>R$ {Number(clienteSelecionadoDetalhes.valorMensalidade || 0).toFixed(2)}</b></div>
-              <div style={{ fontSize: 13, color: subtext }}>Vencimento: {clienteSelecionadoDetalhes.dataVencimento}</div>
+              <div style={{ fontSize: 13, color: subtext }}>Valor da Mensalidade: <b style={{ color: accent }}>R$ {Number(clienteSelecionadoDetalhes.valorMensalidade || clienteSelecionadoDetalhes.valor_mensalidade || 0).toFixed(2)}</b></div>
+              <div style={{ fontSize: 13, color: subtext }}>Vencimento: {clienteSelecionadoDetalhes.dataVencimento || clienteSelecionadoDetalhes.data_vencimento}</div>
             </div>
 
             <div style={{ padding: 12, borderRadius: 8, backgroundColor: dark ? '#141414' : '#f9f9f9', border: `1px solid ${borderColor}` }}>
               <div style={{ fontSize: 12, color: subtext, marginBottom: 8 }}>Status da Mensalidade / Situação:</div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => handleAtualizarStatusCliente(clienteSelecionadoDetalhes.id, 'Pago')} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: clienteSelecionadoDetalhes.statusMensalidade === 'Pago' ? '2px solid #4ade80' : `1px solid ${borderColor}`, backgroundColor: clienteSelecionadoDetalhes.statusMensalidade === 'Pago' ? '#22c55e22' : 'transparent', color: text, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>✅ Pago</button>
-                <button onClick={() => handleAtualizarStatusCliente(clienteSelecionadoDetalhes.id, 'Pendente (Não Pago)')} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: clienteSelecionadoDetalhes.statusMensalidade?.includes('Pendente') ? '2px solid #ef4444' : `1px solid ${borderColor}`, backgroundColor: clienteSelecionadoDetalhes.statusMensalidade?.includes('Pendente') ? '#ef444422' : 'transparent', color: text, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>❌ Não Pago</button>
-                <button onClick={() => handleAtualizarStatusCliente(clienteSelecionadoDetalhes.id, 'Inativo')} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: clienteSelecionadoDetalhes.statusMensalidade === 'Inativo' ? '2px solid #9ca3af' : `1px solid ${borderColor}`, backgroundColor: clienteSelecionadoDetalhes.statusMensalidade === 'Inativo' ? '#9ca3af22' : 'transparent', color: text, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>⚪ Inativo</button>
+                <button onClick={() => handleAtualizarStatusCliente(clienteSelecionadoDetalhes.id, 'Pago')} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: (clienteSelecionadoDetalhes.statusMensalidade || clienteSelecionadoDetalhes.status_mensalidade) === 'Pago' ? '2px solid #4ade80' : `1px solid ${borderColor}`, backgroundColor: (clienteSelecionadoDetalhes.statusMensalidade || clienteSelecionadoDetalhes.status_mensalidade) === 'Pago' ? '#22c55e22' : 'transparent', color: text, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>✅ Pago</button>
+                <button onClick={() => handleAtualizarStatusCliente(clienteSelecionadoDetalhes.id, 'Pendente (Não Pago)')} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: (clienteSelecionadoDetalhes.statusMensalidade || clienteSelecionadoDetalhes.status_mensalidade)?.includes('Pendente') ? '2px solid #ef4444' : `1px solid ${borderColor}`, backgroundColor: (clienteSelecionadoDetalhes.statusMensalidade || clienteSelecionadoDetalhes.status_mensalidade)?.includes('Pendente') ? '#ef444422' : 'transparent', color: text, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>❌ Não Pago</button>
+                <button onClick={() => handleAtualizarStatusCliente(clienteSelecionadoDetalhes.id, 'Inativo')} style={{ flex: 1, padding: '8px 4px', borderRadius: 6, border: (clienteSelecionadoDetalhes.statusMensalidade || clienteSelecionadoDetalhes.status_mensalidade) === 'Inativo' ? '2px solid #9ca3af' : `1px solid ${borderColor}`, backgroundColor: (clienteSelecionadoDetalhes.statusMensalidade || clienteSelecionadoDetalhes.status_mensalidade) === 'Inativo' ? '#9ca3af22' : 'transparent', color: text, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>⚪ Inativo</button>
               </div>
             </div>
 

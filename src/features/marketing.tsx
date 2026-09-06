@@ -393,13 +393,14 @@ function CanaisDeVenda({
   });
 
   sales.forEach((s) => {
-    let g = s.gender || "Prefiro não informar";
-    // Padroniza caso venha divergente mas compatível
-    if (g === "Não informado") g = "Prefiro não informar";
+    // Tratamento robusto para extrair o gênero corretamente, cobrindo `gender`, `genders` e valores legados/nulos
+    let g = s.gender || s.genders || "Prefiro não informar";
+    if (g === "Não informado" || !g) g = "Prefiro não informar";
+    
     if (genderCounts[g] !== undefined) {
       genderCounts[g] += 1;
     } else {
-      genderCounts[g] = (genderCounts[g] || 0) + 1;
+      genderCounts["Prefiro não informar"] = (genderCounts["Prefiro não informar"] || 0) + 1;
     }
   });
 

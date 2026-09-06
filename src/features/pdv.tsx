@@ -39,7 +39,16 @@ export function PDV({
   const [gender, setGender] = useState("Prefiro não informar");
   const [salesChannel, setSalesChannel] = useState("Loja física");
   const [deliveryType, setDeliveryType] = useState("Retirada");
-  const [selectedStockLoc, setSelectedStockLoc] = useState(stockLocations[0]?.id || "");
+
+  // Fallback inteligente para garantir que a lista de locais de estoque nunca fique vazia
+  const availableStockLocations = stockLocations && stockLocations.length > 0 
+    ? stockLocations 
+    : [
+        { id: 'loja-principal', name: 'Loja Principal' },
+        { id: 'degustacao', name: 'Degustação' }
+      ];
+
+  const [selectedStockLoc, setSelectedStockLoc] = useState(availableStockLocations[0]?.id || "");
 
   const categories = [
     "Todos produtos",
@@ -207,8 +216,13 @@ Obrigado pela preferência!
       return;
     }
 
-    const currentLocObj = stockLocations.find(l => l.id === selectedStockLoc);
-    const localName = currentLocObj ? currentLocObj.name : (stockLocations[0]?.name || "Estoque Principal");
+    if (!selectedStockLoc) {
+      alert("Por favor, selecione um local de estoque antes de finalizar a venda.");
+      return;
+    }
+
+    const currentLocObj = availableStockLocations.find(l => l.id === selectedStockLoc);
+    const localName = currentLocObj ? currentLocObj.name : "Estoque Principal";
 
     const formattedItems = cart.map(item => ({
       ...item,
@@ -256,7 +270,6 @@ Obrigado pela preferência!
         throw new Error("Falha ao salvar a venda no servidor.");
       }
 
-      // Atualiza o cashback de 3% do cliente localmente se houver um cliente selecionado
       if (selectedCustomer && typeof setCustomers === "function") {
         const earnedCashback = total * 0.03;
         const updatedCustomersList = customers.map(c => 
@@ -267,7 +280,6 @@ Obrigado pela preferência!
         setCustomers(updatedCustomersList);
       }
 
-      // Atualização do estoque localmente garantindo a integridade dos locais
       if (typeof setProducts === "function" && products.length > 0) {
         const updatedProducts = products.map((prod) => {
           const foundItem = cart.find((i) => String(i.id) === String(prod.id));
@@ -277,24 +289,19 @@ Obrigado pela preferência!
           if (!isControlled) return prod;
 
           const newStocks = { ...(prod.stocks || {}) };
-          let chaveAlvo = selectedStockLoc;
-          if (!newStocks[chaveAlvo]) {
-            if (newStocks[localName]) {
-              chaveAlvo = localName;
-            } else {
-              const chavesExistentes = Object.keys(newStocks);
-              if (chavesExistentes.length > 0) {
-                if (chavesExistentes.includes(selectedStockLoc)) {
-                  chaveAlvo = selectedStockLoc;
-                } else if (chavesExistentes.includes(localName)) {
-                  chaveAlvo = localName;
-                } else {
-                  chaveAlvo = chavesExistentes[0];
-                }
-              } else {
-                chaveAlvo = selectedStockLoc || 'Estoque Principal';
-              }
-            }
+          
+          let chaveAlvo = null;
+          if (selectedStockLoc && newStocks[selectedStockLoc] !== undefined) {
+            chaveAlvo = selectedStockLoc;
+          } else if (localName && newStocks[localName] !== undefined) {
+            chaveAlvo = localName;
+          } else if (selectedStockLoc) {
+            chaveAlvo = selectedStockLoc;
+          } else if (localName) {
+            chaveAlvo = localName;
+          } else {
+            const chavesExistentes = Object.keys(newStocks);
+            chaveAlvo = chavesExistentes.length > 0 ? chavesExistentes[0] : 'Estoque Principal';
           }
 
           const currentQty = Number(newStocks[chaveAlvo] ?? prod.stock ?? 0);
@@ -810,7 +817,7 @@ Obrigado pela preferência!
                     marginTop: 2
                   }}
                 >
-                  {stockLocations.map((loc) => (
+                  {availableStockLocations.map((loc) => (
                     <option key={loc.id} value={loc.id} style={{ backgroundColor: card, color: text }}>
                       {loc.name}
                     </option>

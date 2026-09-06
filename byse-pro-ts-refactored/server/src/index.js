@@ -127,7 +127,17 @@ const handleGetCustomers = async (req, res) => {
             'SELECT id, name, phone, cpf, data_aniversario, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade FROM customers WHERE user_id = $1',
             [req.user.id]
         );
-        return res.status(200).json(result.rows);
+        
+        const mappedRows = result.rows.map(c => ({
+            ...c,
+            nome: c.name,
+            telefone: c.phone,
+            statusMensalidade: c.status_mensalidade,
+            dataVencimento: c.data_vencimento,
+            valorMensalidade: Number(c.valor_mensalidade || 0)
+        }));
+
+        return res.status(200).json(mappedRows);
     } catch (error) {
         console.error('Erro ao listar clientes:', error);
         return res.status(500).json({ error: 'Erro interno no servidor.' });
@@ -137,8 +147,14 @@ const handleGetCustomers = async (req, res) => {
 const handlePostCustomer = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { id, name, phone, cpf, data_aniversario, birthDate, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade } = req.body;
+        const { id, name, nome, phone, telefone, cpf, data_aniversario, birthDate, cashback, status, status_mensalidade, statusMensalidade, data_vencimento, dataVencimento, valor_mensalidade, valorMensalidade } = req.body;
+        
         const clienteId = id || 'c' + Date.now();
+        const nomeFinal = name || nome || 'Cliente';
+        const telefoneFinal = phone || telefone || '';
+        const statusMensalidadeFinal = status_mensalidade || statusMensalidade || 'Pendente (Não Pago)';
+        const vencimentoFinal = data_vencimento || dataVencimento || null;
+        const valorMensalidadeFinal = parseFloat(valor_mensalidade || valorMensalidade || 0);
         const aniversarioFinal = data_aniversario || birthDate || null;
         
         await pool.query(
@@ -157,19 +173,34 @@ const handlePostCustomer = async (req, res) => {
             [
                 clienteId, 
                 userId, 
-                name, 
-                phone || '', 
+                nomeFinal, 
+                telefoneFinal, 
                 cpf || '', 
                 aniversarioFinal,
                 cashback || 0, 
                 status || 'Ativo', 
-                status_mensalidade || 'Pendente (Não Pago)', 
-                data_vencimento || null, 
-                valor_mensalidade || 0
+                statusMensalidadeFinal, 
+                vencimentoFinal, 
+                valorMensalidadeFinal
             ]
         );
 
-        const clienteData = { id: clienteId, userId, name, phone: phone || '', data_aniversario: aniversarioFinal, cashback: cashback || 0, status: status || 'Ativo' };
+        const clienteData = { 
+            id: clienteId, 
+            userId, 
+            name: nomeFinal, 
+            nome: nomeFinal, 
+            phone: telefoneFinal, 
+            telefone: telefoneFinal, 
+            statusMensalidade: statusMensalidadeFinal,
+            status_mensalidade: statusMensalidadeFinal,
+            dataVencimento: vencimentoFinal,
+            data_vencimento: vencimentoFinal,
+            valorMensalidade: valorMensalidadeFinal,
+            valor_mensalidade: valorMensalidadeFinal,
+            cashback: cashback || 0, 
+            status: status || 'Ativo' 
+        };
         return res.status(201).json({ message: 'Cliente salvo', cliente: clienteData });
     } catch (error) {
         console.error('Erro ao salvar cliente:', error);
@@ -432,26 +463,31 @@ app.get('/api/sales', authMiddleware, async (req, res) => {
             [userId]
         );
 
-        const salesFormatted = result.rows.map(s => ({
-            id: s.id,
-            customerId: s.customer_id,
-            customer_id: s.customer_id,
-            customerName: s.customer_name,
-            customer_name: s.customer_name,
-            seller: s.seller,
-            paymentMethod: s.payment_method,
-            payment_method: s.payment_method,
-            discount: Number(s.discount || 0),
-            subtotal: Number(s.subtotal || 0),
-            total: Number(s.total || 0),
-            gender: s.gender || 'Prefiro não informar',
-            salesChannel: s.sales_channel || 'Loja física',
-            sales_channel: s.sales_channel || 'Loja física',
-            deliveryType: s.delivery_type || 'Retirada',
-            delivery_type: s.delivery_type || 'Retirada',
-            items: typeof s.items === 'string' ? JSON.parse(s.items || '[]') : (s.items || []),
-            date: s.date ? new Date(s.date).toISOString() : new Date().toISOString()
-        }));
+        const salesFormatted = result.rows.map(s => {
+            let normalizedGender = s.gender || 'Prefiro não informar';
+            if (normalizedGender === 'Não informado') normalizedGender = 'Prefiro não informar';
+            
+            return {
+                id: s.id,
+                customerId: s.customer_id,
+                customer_id: s.customer_id,
+                customerName: s.customer_name,
+                customer_name: s.customer_name,
+                seller: s.seller,
+                paymentMethod: s.payment_method,
+                payment_method: s.payment_method,
+                discount: Number(s.discount || 0),
+                subtotal: Number(s.subtotal || 0),
+                total: Number(s.total || 0),
+                gender: normalizedGender,
+                salesChannel: s.sales_channel || 'Loja física',
+                sales_channel: s.sales_channel || 'Loja física',
+                deliveryType: s.delivery_type || 'Retirada',
+                delivery_type: s.delivery_type || 'Retirada',
+                items: typeof s.items === 'string' ? JSON.parse(s.items || '[]') : (s.items || []),
+                date: s.date ? new Date(s.date).toISOString() : new Date().toISOString()
+            };
+        });
 
         return res.status(200).json(salesFormatted);
     } catch (error) {
@@ -472,6 +508,10 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         const totalVal = Number(s.total || 0);
         const customerId = s.customerId || s.customer_id || null;
 
+        let rawGender = s.gender || 'Prefiro não informar';
+        if (rawGender === 'Não informado') rawGender = 'Prefiro não informar';
+        const normalizedGender = (rawGender.trim() !== '') ? rawGender : 'Prefiro não informar';
+
         await client.query('BEGIN');
 
         await client.query(`
@@ -491,7 +531,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
             discountVal,
             subtotalVal,
             totalVal,
-            (s.gender && s.gender.trim() !== '') ? s.gender : 'Prefiro não informar',
+            normalizedGender,
             s.sales_channel || s.salesChannel || 'Loja física',
             s.delivery_type || s.deliveryType || 'Retirada',
             JSON.stringify(items),
@@ -506,10 +546,19 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
             );
         }
 
+        // Mapeamento dos locais de estoque do usuário para garantir correspondência exata de chave (ID <-> Nome)
+        const locaisRes = await client.query('SELECT id, name FROM stock_locations WHERE user_id = $1', [userId]);
+        const locaisMap = {};
+        locaisRes.rows.forEach(l => {
+            locaisMap[l.id] = l.name;
+            locaisMap[l.name] = l.name;
+        });
+
         for (const item of items) {
             const prodId = item.id || item.productId;
             const qtdVendida = Number(item.quantity || item.qty || 1);
-            const localName = item.local || item.location || 'Estoque Principal';
+            const rawLocal = item.local || item.location || item.stockLocationId || 'Estoque Principal';
+            const localName = locaisMap[rawLocal] || rawLocal;
 
             if (prodId) {
                 const prodRes = await client.query('SELECT stocks, control_stock FROM products WHERE id = $1 AND user_id = $2', [prodId, userId]);
@@ -522,9 +571,15 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
                             stocksObj = {};
                         }
 
+                        // Procura a chave considerando correspondência exata ou case-insensitive
                         let chaveAlvo = localName;
-                        if (!stocksObj[chaveAlvo]) {
-                            stocksObj[chaveAlvo] = 0;
+                        if (stocksObj[rawLocal] !== undefined) {
+                            chaveAlvo = rawLocal;
+                        } else if (!stocksObj[chaveAlvo]) {
+                            const chaveEncontrada = Object.keys(stocksObj).find(k => k.toLowerCase() === localName.toLowerCase());
+                            if (chaveEncontrada) {
+                                chaveAlvo = chaveEncontrada;
+                            }
                         }
 
                         const estoqueAtual = Number(stocksObj[chaveAlvo] || 0);
@@ -761,7 +816,7 @@ app.get('/api/pre-treino/products', authMiddleware, async (req, res) => {
                     [p.id, userId, p.name, p.cost]
                 );
             }
-            return res.status(200).json(defaultProds.map(p => ({ ...p, custo: p.cost })));
+            return res.status(200).json(defaultProds.map(p => ({ ...p, nome: p.name, custo: p.cost })));
         }
         return res.status(200).json(result.rows.map(p => ({ 
             id: p.id,
@@ -779,13 +834,15 @@ app.get('/api/pre-treino/products', authMiddleware, async (req, res) => {
 app.post('/api/pre-treino/products', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { id, name, cost, custo } = req.body;
+        const { id, name, nome, cost, custo } = req.body;
+        const finalName = name || nome || 'Produto';
         const finalCost = cost !== undefined ? cost : (custo !== undefined ? custo : 0);
         const prodId = id || 'pt_prod_' + Date.now();
+        
         await pool.query(
             `INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4)
              ON CONFLICT (id) DO UPDATE SET name = $3, cost = $4`,
-            [prodId, userId, name, parseFloat(finalCost) || 0]
+            [prodId, userId, finalName, parseFloat(finalCost) || 0]
         );
         return res.status(201).json({ message: 'Produto de pré-treino salvo!' });
     } catch (error) {
@@ -816,12 +873,16 @@ app.get('/api/pre-treino/records', authMiddleware, async (req, res) => {
         const formatted = result.rows.map(r => ({
             id: r.id,
             customerId: r.customer_id,
+            customer_id: r.customer_id,
             customerName: r.nome_cliente,
+            nomeCliente: r.nome_cliente,
             productId: r.produto_id,
             productName: r.nome_produto,
+            nomeProduto: r.nome_produto,
             cost: Number(r.custo || 0),
-            price: Number(r.custo || 0),
+            custo: Number(r.custo || 0),
             date: r.data || new Date().toISOString(),
+            data: r.data,
             horario: r.horario
         }));
         return res.status(200).json(formatted);
@@ -837,9 +898,9 @@ app.post('/api/pre-treino/records', authMiddleware, async (req, res) => {
         const r = req.body;
         const recordId = r.id || 'pt_rec_' + Date.now();
         const customerId = r.customerId || r.customer_id || null;
-        const nomeCliente = r.customerName || r.nome_cliente || 'Cliente';
+        const nomeCliente = r.customerName || r.nomeCliente || r.nome_cliente || 'Cliente';
         const produtoId = r.productId || r.produto_id || '';
-        const nomeProduto = r.productName || r.nome_produto || '';
+        const nomeProduto = r.productName || r.nomeProduto || r.nome_produto || '';
         const custo = Number(r.cost !== undefined ? r.cost : (r.custo !== undefined ? r.custo : 0));
         const data = r.date || r.data || new Date().toISOString().split('T')[0];
         const horario = r.horario || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
