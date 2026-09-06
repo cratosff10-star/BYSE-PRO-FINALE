@@ -366,7 +366,6 @@ function CanaisDeVenda({
   const totalRevenue = sales.reduce((s, v) => s + Number(v.total || 0), 0);
 
   const byChannel = CHANNELS.map((ch) => {
-    // CORRIGIDO: Lê sales_channel do backend (com fallback para channel ou 'Loja física')
     const chSales = sales.filter(
       (s) => (s.sales_channel || s.salesChannel || s.channel || "Loja física") === ch
     );
@@ -383,15 +382,29 @@ function CanaisDeVenda({
     };
   });
 
+  // Mapeamento garantindo que GENDERS ("Masculino", "Feminino", "Prefiro não informar") sempre apareçam
   const genderCounts = {};
+  const validGenders = Array.isArray(GENDERS) && GENDERS.length > 0 
+    ? GENDERS 
+    : ["Masculino", "Feminino", "Prefiro não informar"];
+
+  validGenders.forEach((g) => {
+    genderCounts[g] = 0;
+  });
+
   sales.forEach((s) => {
-    const g = s.gender || "Não informado";
-    genderCounts[g] = (genderCounts[g] || 0) + 1;
+    let g = s.gender || "Prefiro não informar";
+    // Padroniza caso venha divergente mas compatível
+    if (g === "Não informado") g = "Prefiro não informar";
+    if (genderCounts[g] !== undefined) {
+      genderCounts[g] += 1;
+    } else {
+      genderCounts[g] = (genderCounts[g] || 0) + 1;
+    }
   });
 
   const fulfillmentCounts = {};
   sales.forEach((s) => {
-    // CORRIGIDO: Lê delivery_type do backend
     const f = s.delivery_type || s.deliveryType || s.fulfillment || "Retirada";
     fulfillmentCounts[f] = (fulfillmentCounts[f] || 0) + 1;
   });
@@ -484,11 +497,11 @@ function CanaisDeVenda({
                 >
                   <span>{g}</span>
                   <span style={{ fontWeight: 700 }}>
-                    {((c / totalSales) * 100).toFixed(0)}%
+                    {totalSales > 0 ? ((c / totalSales) * 100).toFixed(0) : 0}%
                   </span>
                 </div>
                 <HBar
-                  pct={(c / totalSales) * 100}
+                  pct={totalSales > 0 ? (c / totalSales) * 100 : 0}
                   color={accent}
                   border={border}
                   h={6}

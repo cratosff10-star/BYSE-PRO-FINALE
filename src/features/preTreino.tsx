@@ -60,7 +60,7 @@ export function PreTreino({
 
   const clientesParaConsumo = (clientes || []).filter(c => c.statusMensalidade === 'Pago');
   const clientesValidosCusto = (clientes || []).filter(c => c.statusMensalidade !== 'Inativo');
-  const totalCustoPreTreinosMes = (registros || []).reduce((acc, curr) => acc + (curr.custo || 0), 0);
+  const totalCustoPreTreinosMes = (registros || []).reduce((acc, curr) => acc + (curr.cost || curr.custo || 0), 0);
   const totalValorMensalidades = clientesValidosCusto.reduce((acc, curr) => acc + Number(curr.valorMensalidade || 0), 0); 
   const custoGeralTotalMes = totalCustoPreTreinosMes + totalValorMensalidades;
 
@@ -73,37 +73,72 @@ export function PreTreino({
     return true;
   });
 
-  const handleCadastrarCliente = (e: React.FormEvent) => {
+  const handleCadastrarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novoNomeCliente || !novoTelefoneCliente) return;
 
-    const novo = {
+    const payload = {
       id: `cli_pre_${Date.now()}`,
       name: novoNomeCliente,
-      nome: novoNomeCliente,
       telefone: novoTelefoneCliente,
-      phone: novoTelefoneCliente,
-      statusMensalidade: 'Pendente (Não Pago)',
-      dataVencimento: novoVencimentoCliente || obterDataUmMesAdiantado(),
-      valorMensalidade: Number(novoValorMensalidade) || 0
+      status_mensalidade: 'Pendente (Não Pago)',
+      data_vencimento: novoVencimentoCliente || obterDataUmMesAdiantado(),
+      valor_mensalidade: Number(novoValorMensalidade) || 0
     };
 
-    const atualizados = [...(clientes || []), novo];
-    setClientes(atualizados);
-    setNovoNomeCliente('');
-    setNovoTelefoneCliente('');
-    setNovoValorMensalidade('90.00');
-    setNovoVencimentoCliente(obterDataUmMesAdiantado());
+    try {
+      const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
+      if (API_URL) {
+        const response = await fetch(`${API_URL}/customers`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          alert("Erro ao salvar cliente no servidor.");
+          return;
+        }
+      }
+
+      const novoClienteFormatado = {
+        ...payload,
+        nome: payload.name,
+        phone: payload.telefone,
+        statusMensalidade: payload.status_mensalidade,
+        dataVencimento: payload.data_vencimento,
+        valorMensalidade: payload.valor_mensalidade
+      };
+
+      setClientes([...(clientes || []), novoClienteFormatado]);
+      setNovoNomeCliente('');
+      setNovoTelefoneCliente('');
+      setNovoValorMensalidade('90.00');
+      setNovoVencimentoCliente(obterDataUmMesAdiantado());
+    } catch (error) {
+      console.error("Erro ao cadastrar cliente:", error);
+      alert("Erro de conexão ao salvar cliente.");
+    }
   };
 
   const handleAtualizarStatusCliente = async (clienteId: string, novoStatus: string) => {
     try {
+      const clienteAlvo = (clientes || []).find(c => c.id === clienteId);
+      if (!clienteAlvo) return;
+
+      const payload = {
+        name: clienteAlvo.nome || clienteAlvo.name,
+        phone: clienteAlvo.telefone || clienteAlvo.phone,
+        status_mensalidade: novoStatus,
+        data_vencimento: clienteAlvo.dataVencimento,
+        valor_mensalidade: clienteAlvo.valorMensalidade
+      };
+
       const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
       if (API_URL) {
         const response = await fetch(`${API_URL}/customers/${clienteId}`, {
-          method: 'PUT',
+          method: 'POST',
           headers,
-          body: JSON.stringify({ status_mensalidade: novoStatus })
+          body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
@@ -154,19 +189,41 @@ export function PreTreino({
     }
   };
 
-  const handleCadastrarProduto = (e: React.FormEvent) => {
+  const handleCadastrarProduto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novoNomeProduto || !novoCustoProduto) return;
 
-    const novoProd = {
+    const payload = {
       id: `prod_pre_${Date.now()}`,
       name: novoNomeProduto,
-      nome: novoNomeProduto,
-      price: Number(novoCustoProduto),
-      custo: Number(novoCustoProduto)
+      cost: Number(novoCustoProduto)
     };
 
-    const atualizados = [...(produtosPreTreino || []), novoProd];
+    try {
+      const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
+      if (API_URL) {
+        const response = await fetch(`${API_URL}/pre-treino/products`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          alert("Erro ao cadastrar produto de pré-treino no servidor.");
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Erro de conexão ao cadastrar produto de pré-treino:", error);
+    }
+
+    const produtoFormatado = {
+      ...payload,
+      nome: payload.name,
+      custo: payload.cost
+    };
+
+    const atualizados = [...(produtosPreTreino || []), produtoFormatado];
     setProdutosPreTreino(atualizados);
     setNovoNomeProduto('');
     setNovoCustoProduto('');
@@ -177,7 +234,7 @@ export function PreTreino({
     try {
       const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
       if (API_URL) {
-        const response = await fetch(`${API_URL}/products/${produtoId}`, {
+        const response = await fetch(`${API_URL}/pre-treino/products/${produtoId}`, {
           method: 'DELETE',
           headers
         });
@@ -196,12 +253,12 @@ export function PreTreino({
     }
   };
 
-  const handleRegistrarPreTreino = (e: React.FormEvent) => {
+  const handleRegistrarPreTreino = async (e: React.FormEvent) => {
     e.preventDefault();
     setErroConsumo('');
     if (!novoProdutoId) return;
 
-    let idClienteFinal = '';
+    let idClienteFinal = null;
     let nomeClienteFinal = '';
 
     if (tipoConsumo === 'cadastrado') {
@@ -228,18 +285,36 @@ export function PreTreino({
     if (!produtoSelecionado) return;
 
     const agora = new Date();
-    const novoRegistro = {
-      id: `reg_${Date.now()}`,
-      clienteId: idClienteFinal,
-      nomeCliente: nomeClienteFinal,
-      produtoId: produtoSelecionado.id,
-      nomeProduto: produtoSelecionado.nome || produtoSelecionado.name,
-      custo: Number(produtoSelecionado.custo || produtoSelecionado.price || 0),
-      data: agora.toISOString().split('T')[0],
-      horario: agora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    const payloadRegistro = {
+      id: `pt_rec_${Date.now()}`,
+      customerId: idClienteFinal,
+      customerName: nomeClienteFinal,
+      productId: produtoSelecionado.id,
+      productName: produtoSelecionado.nome || produtoSelecionado.name,
+      cost: Number(produtoSelecionado.custo || produtoSelecionado.cost || 0),
+      date: agora.toISOString().split('T')[0],
+      horario: agora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    const atualizados = [novoRegistro, ...(registros || [])];
+    try {
+      const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' };
+      if (API_URL) {
+        const response = await fetch(`${API_URL}/pre-treino/records`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payloadRegistro)
+        });
+
+        if (!response.ok) {
+          alert("Erro ao registrar consumo no servidor.");
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao salvar registro de pré-treino:", error);
+    }
+
+    const atualizados = [payloadRegistro, ...(registros || [])];
     setRegistros(atualizados);
     setNovoClienteId('');
     setNomeClienteAvulso('');
@@ -339,7 +414,7 @@ export function PreTreino({
                   <select value={novoProdutoId} onChange={(e) => setNewProdutoId(e.target.value)} style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${borderColor}`, backgroundColor: dark ? '#141414' : '#fff', color: text }} required>
                     <option value="">Selecione o produto/dose...</option>
                     {produtosPreTreino.map(p => (
-                      <option key={p.id} value={p.id}>{p.nome || p.name} (R$ {(p.custo || p.price || 0).toFixed(2)})</option>
+                      <option key={p.id} value={p.id}>{p.nome || p.name} (R$ {(p.custo || p.cost || 0).toFixed(2)})</option>
                     ))}
                   </select>
                 </div>
@@ -367,10 +442,10 @@ export function PreTreino({
                   ) : (
                     (registros || []).map(r => (
                       <tr key={r.id} style={{ borderBottom: `1px solid ${borderColor}` }}>
-                        <td style={{ padding: 10, fontSize: 13, color: text, fontWeight: 'bold' }}>{r.nomeCliente}</td>
-                        <td style={{ padding: 10, fontSize: 13, color: text }}>{r.nomeProduto}</td>
-                        <td style={{ padding: 10, fontSize: 13, color: accent }}>R$ {(r.custo || 0).toFixed(2)}</td>
-                        <td style={{ padding: 10, fontSize: 12, color: subtext }}>{r.data} às {r.horario}</td>
+                        <td style={{ padding: 10, fontSize: 13, color: text, fontWeight: 'bold' }}>{r.customerName || r.nomeCliente}</td>
+                        <td style={{ padding: 10, fontSize: 13, color: text }}>{r.productName || r.nomeProduto}</td>
+                        <td style={{ padding: 10, fontSize: 13, color: accent }}>R$ {(r.cost || r.custo || 0).toFixed(2)}</td>
+                        <td style={{ padding: 10, fontSize: 12, color: subtext }}>{r.date || r.data} às {r.horario}</td>
                       </tr>
                     ))
                   )}
@@ -530,7 +605,7 @@ export function PreTreino({
                   (produtosPreTreino || []).map(p => (
                     <tr key={p.id} style={{ borderBottom: `1px solid ${borderColor}` }}>
                       <td style={{ padding: 10, fontSize: 13, color: text, fontWeight: 'bold' }}>{p.nome || p.name}</td>
-                      <td style={{ padding: 10, fontSize: 13, color: accent }}>R$ {(p.custo || p.price || 0).toFixed(2)}</td>
+                      <td style={{ padding: 10, fontSize: 13, color: accent }}>R$ {(p.custo || p.cost || 0).toFixed(2)}</td>
                       <td style={{ padding: 10, textAlign: 'right' }}>
                         <button 
                           onClick={() => handleExcluirProduto(p.id)}

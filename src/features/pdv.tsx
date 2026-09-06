@@ -11,6 +11,7 @@ export function PDV({
   setCustomers,
   products = [],
   setProducts,
+  stockLocations = [],
   sellers = [],
   sales = [],
   setSales,
@@ -27,10 +28,8 @@ export function PDV({
   const [foundCustomer, setFoundCustomer] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   
-  // Estado para armazenar a última venda concluída e permitir emissão de comprovante
   const [lastCompletedSale, setLastCompletedSale] = useState(null);
 
-  // Estados do Pedido / Venda
   const [productQuery, setProductQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Todos produtos");
   const [cart, setCart] = useState([]);
@@ -40,6 +39,7 @@ export function PDV({
   const [gender, setGender] = useState("Prefiro não informar");
   const [salesChannel, setSalesChannel] = useState("Loja física");
   const [deliveryType, setDeliveryType] = useState("Retirada");
+  const [selectedStockLoc, setSelectedStockLoc] = useState(stockLocations[0]?.id || "");
 
   const categories = [
     "Todos produtos",
@@ -60,7 +60,6 @@ export function PDV({
     const newCust = {
       id: "c" + Date.now(),
       ...newCustomerData,
-      // Garantindo que a data de aniversário seja enviada corretamente
       data_aniversario: newCustomerData.data_aniversario || newCustomerData.birthDate || null,
       cashback: 0
     };
@@ -114,10 +113,10 @@ export function PDV({
 
   const addToCart = (prod) => {
     setCart((prev) => {
-      const exists = prev.find((item) => item.id === prod.id);
+      const exists = prev.find((item) => String(item.id) === String(prod.id));
       if (exists) {
         return prev.map((item) =>
-          item.id === prod.id ? { ...item, qty: item.qty + 1 } : item
+          String(item.id) === String(prod.id) ? { ...item, qty: item.qty + 1 } : item
         );
       }
       return [...prev, { ...prod, qty: 1 }];
@@ -138,7 +137,6 @@ export function PDV({
   const subtotal = cart.reduce((acc, item) => acc + (Number(item.price) || 0) * item.qty, 0);
   const total = Math.max(0, subtotal - Number(discount));
 
-  // Função de comprovante otimizada e mais compacta
   const generateReceiptText = (saleData) => {
     const itemsText = saleData.items
       .map(i => `${i.qty}x ${i.name} - ${(Number(i.price) * i.qty).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`)
@@ -157,6 +155,8 @@ Subtotal: ${saleData.subtotal.toLocaleString("pt-BR", { style: "currency", curre
 Desconto: ${saleData.discount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
 TOTAL: ${saleData.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
 Pagto: ${saleData.payment_method}
+Canal: ${saleData.sales_channel}
+Gênero: ${saleData.gender}
 --------------------------------
 Obrigado pela preferência!
     `.trim();
@@ -207,19 +207,33 @@ Obrigado pela preferência!
       return;
     }
 
+    const currentLocObj = stockLocations.find(l => l.id === selectedStockLoc);
+    const localName = currentLocObj ? currentLocObj.name : (stockLocations[0]?.name || "Estoque Principal");
+
+    const formattedItems = cart.map(item => ({
+      ...item,
+      productId: item.id,
+      price: Number(item.price || 0),
+      qty: Number(item.qty || 1),
+      quantity: Number(item.qty || 1),
+      local: localName,
+      location: localName
+    }));
+
     const newSale = {
       id: `pur_${Date.now()}`,
       customerId: selectedCustomer ? selectedCustomer.id : null,
+      customer_id: selectedCustomer ? selectedCustomer.id : null,
       customer_name: selectedCustomer ? selectedCustomer.name : "Cliente Geral",
       seller: seller,
       payment_method: paymentMethod,
       discount: Number(discount) || 0,
       total: total,
       subtotal: subtotal,
-      gender: gender,
-      sales_channel: salesChannel,
+      gender: gender,               
+      sales_channel: salesChannel,  
       delivery_type: deliveryType,
-      items: cart,
+      items: formattedItems,
       date: new Date().toISOString()
     };
 
@@ -242,6 +256,61 @@ Obrigado pela preferência!
         throw new Error("Falha ao salvar a venda no servidor.");
       }
 
+      // Atualiza o cashback de 3% do cliente localmente se houver um cliente selecionado
+      if (selectedCustomer && typeof setCustomers === "function") {
+        const earnedCashback = total * 0.03;
+        const updatedCustomersList = customers.map(c => 
+          c.id === selectedCustomer.id 
+            ? { ...c, cashback: Number(c.cashback || 0) + earnedCashback }
+            : c
+        );
+        setCustomers(updatedCustomersList);
+      }
+
+      // Atualização do estoque localmente garantindo a integridade dos locais
+      if (typeof setProducts === "function" && products.length > 0) {
+        const updatedProducts = products.map((prod) => {
+          const foundItem = cart.find((i) => String(i.id) === String(prod.id));
+          if (!foundItem) return prod;
+
+          const isControlled = prod.control_stock ?? prod.controlStock ?? true;
+          if (!isControlled) return prod;
+
+          const newStocks = { ...(prod.stocks || {}) };
+          let chaveAlvo = selectedStockLoc;
+          if (!newStocks[chaveAlvo]) {
+            if (newStocks[localName]) {
+              chaveAlvo = localName;
+            } else {
+              const chavesExistentes = Object.keys(newStocks);
+              if (chavesExistentes.length > 0) {
+                if (chavesExistentes.includes(selectedStockLoc)) {
+                  chaveAlvo = selectedStockLoc;
+                } else if (chavesExistentes.includes(localName)) {
+                  chaveAlvo = localName;
+                } else {
+                  chaveAlvo = chavesExistentes[0];
+                }
+              } else {
+                chaveAlvo = selectedStockLoc || 'Estoque Principal';
+              }
+            }
+          }
+
+          const currentQty = Number(newStocks[chaveAlvo] ?? prod.stock ?? 0);
+          const newQty = Math.max(0, currentQty - foundItem.qty);
+          newStocks[chaveAlvo] = newQty;
+
+          return {
+            ...prod,
+            stock: newQty,
+            stocks: newStocks
+          };
+        });
+
+        setProducts(updatedProducts);
+      }
+
       if (typeof setSales === "function") {
         setSales([...sales, newSale]);
       }
@@ -257,18 +326,19 @@ Obrigado pela preferência!
         if (telefoneLimpo.length >= 10) {
           const nomeCliente = selectedCustomer.name || "Cliente";
           const totalFormatado = total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          const cashbackGanho = (total * 0.03).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
           
           const mensagem = encodeURIComponent(
-            `Olá, ${nomeCliente}! Obrigado pela compra de ${totalFormatado} na nossa loja! 🚀 Seu saldo de cashback foi atualizado. Aproveite na próxima visita!`
+            `Olá, ${nomeCliente}! Obrigado pela compra de ${totalFormatado}! 🚀 Você ganhou ${cashbackGanho} de cashback (3%) nesta compra. Aproveite na próxima visita!`
           );
           
           window.open(`https://wa.me/${telefoneLimpo}?text=${mensagem}`, '_blank');
         }
       }
 
-      alert("Venda finalizada e salva com sucesso!");
+      alert("Venda finalizada, estoque atualizado, 3% de cashback creditado ao cliente e venda salva com sucesso!");
     } catch (error) {
-      console.error(error);
+      console.error("❌ Erro ao finalizar venda:", error);
       alert("Erro ao conectar com o servidor para salvar a venda. Verifique se a API está rodando.");
     }
   };
@@ -632,7 +702,6 @@ Obrigado pela preferência!
             </div>
           </div>
 
-          {/* PAINEL DO CARRINHO REESTRUTURADO E PADRONIZADO */}
           <div
             style={{
               background: card,
@@ -696,7 +765,6 @@ Obrigado pela preferência!
               </div>
             )}
 
-            {/* Bloco Organizado com selects estilizados utilizando as cores da tela (card, border, text) */}
             <div
               style={{
                 background: `${border}15`,
@@ -724,6 +792,27 @@ Obrigado pela preferência!
                   {sellers.map((s) => (
                     <option key={s.id || s.name} value={s.name} style={{ backgroundColor: card, color: text }}>
                       {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={lbl(subtext)}>Local de Estoque (Baixa)</label>
+                <select
+                  value={selectedStockLoc}
+                  onChange={(e) => setSelectedStockLoc(e.target.value)}
+                  style={{
+                    ...inputStyle(border, text),
+                    backgroundColor: card,
+                    color: text,
+                    width: "100%",
+                    marginTop: 2
+                  }}
+                >
+                  {stockLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id} style={{ backgroundColor: card, color: text }}>
+                      {loc.name}
                     </option>
                   ))}
                 </select>
@@ -829,7 +918,6 @@ Obrigado pela preferência!
               </div>
             </div>
 
-            {/* Totais do Pedido */}
             <div
               style={{
                 borderTop: `1px solid ${border}`,
@@ -896,7 +984,6 @@ Obrigado pela preferência!
               Finalizar venda
             </button>
 
-            {/* Opções de Comprovante e Retorno ao Início após finalizar */}
             {lastCompletedSale && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 8 }}>

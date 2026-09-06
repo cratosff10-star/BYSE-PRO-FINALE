@@ -1,7 +1,5 @@
 // @ts-nocheck
-
 import React, { useState, useEffect } from "react";
-
 import {
   Plus,
   Search,
@@ -10,20 +8,9 @@ import {
   ChevronRight,
   Edit2,
 } from "lucide-react";
-
-import {
-  DANGER,
-} from "../data/constants";
-
-import {
-  money,
-  inputStyle,
-} from "../utils/helpers";
-
-import {
-  SectionTitle,
-  Pill,
-} from "../components/common";
+import { DANGER } from "../data/constants";
+import { money, inputStyle } from "../utils/helpers";
+import { SectionTitle, Pill } from "../components/common";
 
 function Clientes({
   customers,
@@ -42,10 +29,8 @@ function Clientes({
   const [editingCashback, setEditingCashback] = useState(null);
   const [cashbackInput, setCashbackInput] = useState("");
 
-  // Utiliza a variável de ambiente do Railway configurada na Vercel, com fallback para o ambiente local
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
-  // 🔄 Busca os clientes do usuário logado no backend assim que o componente carrega
   useEffect(() => {
     const fetchCustomers = async () => {
       const token = localStorage.getItem("byse_token");
@@ -74,7 +59,6 @@ function Clientes({
     c.name.toLowerCase().includes(query.toLowerCase())
   );
 
-  // 💾 Envia o novo cliente para salvar no banco de dados via Backend
   const addCustomer = async () => {
     if (!form.name || !form.phone) return;
 
@@ -102,7 +86,6 @@ function Clientes({
       }
 
       const data = await response.json();
-      // Atualiza o estado com o cliente retornado pelo banco (garantindo o ID correto)
       setCustomers([...customers, data.cliente || data]);
       setForm({ name: "", phone: "", cpf: "" });
       setShowForm(false);
@@ -149,7 +132,8 @@ function Clientes({
     const custSales = sales.filter((s) => 
       s.customer === customer.id || 
       s.customer === customer.name || 
-      s.customer_id === customer.id
+      s.customer_id === customer.id ||
+      s.customerId === customer.id
     );
     const totalSpent = custSales.reduce((s, v) => s + v.total, 0);
     const avgTicket = custSales.length ? totalSpent / custSales.length : 0;
@@ -160,7 +144,8 @@ function Clientes({
     const custSales = sales.filter((s) => 
       s.customer === customer.id || 
       s.customer === customer.name || 
-      s.customer_id === customer.id
+      s.customer_id === customer.id ||
+      s.customerId === customer.id
     );
     if (custSales.length === 0) return null;
     const last = custSales.reduce(
@@ -170,12 +155,34 @@ function Clientes({
     return Math.floor((Date.now() - last.getTime()) / 86400000);
   };
 
-  const saveCashback = (id) => {
+  const saveCashback = async (id) => {
+    const newCb = parseFloat(cashbackInput) || 0;
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+    const targetCust = customers.find(c => c.id === id);
+
+    if (targetCust) {
+      try {
+        await fetch(`${API_URL}/api/clientes`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+            "x-user-id": user.id || "user_1"
+          },
+          body: JSON.stringify({
+            ...targetCust,
+            cashback: newCb
+          })
+        });
+      } catch (e) {
+        console.error("Erro ao salvar cashback no servidor:", e);
+      }
+    }
+
     setCustomers(
       customers.map((c) =>
-        c.id === id
-          ? { ...c, cashback: parseFloat(cashbackInput) || 0 }
-          : c
+        c.id === id ? { ...c, cashback: newCb } : c
       )
     );
     setEditingCashback(null);
@@ -188,8 +195,10 @@ function Clientes({
   sales
     .filter((s) => new Date(s.date) >= monthAgo)
     .forEach((s) => {
-      spendByCustomer[s.customer] =
-        (spendByCustomer[s.customer] || 0) + s.total;
+      const cId = s.customer || s.customer_id || s.customerId;
+      if (cId) {
+        spendByCustomer[cId] = (spendByCustomer[cId] || 0) + s.total;
+      }
     });
 
   const topCustomerId = Object.entries(spendByCustomer).sort(
@@ -245,7 +254,7 @@ function Clientes({
                     {c.id === topCustomerId && <Pill color={accent}>TOP DO MÊS</Pill>}
                     {(days === null || days >= 30) && <Pill color={DANGER}>{days === null ? "nunca comprou" : `${days}d sem comprar`}</Pill>}
                   </div>
-                  <div style={{ fontSize: 12, color: subtext }}>{c.phone} · {custSales.length} compra(s) · ticket médio {money(avgTicket)}</div>
+                  <div style={{ fontSize: 12, color: subtext }}>{c.phone} · {custSales.length} compra(s) · ticket médio {money(avgTicket)} · Cashback: <strong style={{ color: accent }}>{money(c.cashback)}</strong></div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -260,7 +269,7 @@ function Clientes({
                 <div style={{ padding: "0 14px 14px", fontSize: 13 }}>
                   <div style={{ color: subtext, marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span>CPF: {c.cpf || "não informado"}</span>
-                    <span>· Cashback:</span>
+                    <span>· Cashback Atual:</span>
                     {editingCashback === c.id ? (
                       <>
                         <input value={cashbackInput} onChange={(e) => setCashbackInput(e.target.value)} type="number" style={{ ...inputStyle(border, text), width: 90, flex: "0 0 90px" }} />
@@ -276,7 +285,7 @@ function Clientes({
                   {custSales.length === 0 && <div style={{ color: subtext }}>Nenhuma compra registrada.</div>}
                   {custSales.map((s) => (
                     <div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: `1px dashed ${border}` }}>
-                      <span>{new Date(s.date).toLocaleDateString("pt-BR")} — {s.items.map((it) => it.name).join(", ")}</span>
+                      <span>{new Date(s.date).toLocaleDateString("pt-BR")} — {(s.items || []).map((it) => it.name).join(", ")}</span>
                       <span style={{ fontWeight: 700 }}>{money(s.total)}</span>
                     </div>
                   ))}

@@ -123,6 +123,29 @@ import type {
   WelcomeConfig
 } from "../types";
 
+/**
+ * Função utilitária para adicionar o cashback acumulado a um cliente quando uma compra é realizada.
+ * @param customers - Lista atual de clientes
+ * @param setCustomers - Função setState para atualizar os clientes
+ * @param customerId - ID do cliente que realizou a compra
+ * @param saleTotal - Valor total da compra
+ * @param cashbackPct - Porcentagem atual de cashback configurada
+ */
+export const applyCashback = (customers, setCustomers, customerId, saleTotal, cashbackPct) => {
+  if (!customerId || !saleTotal || saleTotal <= 0) return;
+  const earned = (saleTotal * (cashbackPct || 0)) / 100;
+
+  setCustomers(
+    customers.map((c) =>
+      c.id === customerId
+        ? {
+            ...c,
+            cashback: (Number(c.cashback) || 0) + earned
+          }
+        : c
+    )
+  );
+};
 
 function Cashback({
   customers,

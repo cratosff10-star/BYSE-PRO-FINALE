@@ -134,9 +134,8 @@ export function Estoque({
         await onEditProduct(built);
       }
     } else {
-      const updatedList = [...products, built];
       if (setProducts) {
-        setProducts(updatedList);
+        await setProducts(built);
       }
     }
     cancelForm();

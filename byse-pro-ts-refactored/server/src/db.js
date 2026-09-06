@@ -40,6 +40,7 @@ export async function initDb() {
     );
 
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_aniversario DATE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback NUMERIC DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(255) PRIMARY KEY,

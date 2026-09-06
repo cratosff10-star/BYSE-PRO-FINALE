@@ -39,6 +39,10 @@ function SupplementSystem() {
     const [device, setDevice] = useState("mobile");   
     const [tab, setTab] = useState("dashboard");    
 
+    // Novos estados para o modo catálogo público via URL
+    const [publicStoreData, setPublicStoreData] = useState<any>(null);
+    const [isPublicCatalog, setIsPublicCatalog] = useState(false);
+
     const [products, setProducts] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [sellers, setSellers] = useState([]);
@@ -67,7 +71,7 @@ function SupplementSystem() {
         };
     };
 
-    // Sincronização estrita espelhando o banco de dados como fonte absoluta[cite: 9]
+    // Sincronização estrita espelhando o banco de dados como fonte absoluta
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
@@ -147,8 +151,30 @@ function SupplementSystem() {
         return () => clearInterval(interval);
     }, [user]);
 
-    // Garante o carregamento imediato do banco de dados logo na inicialização se o usuário estiver autenticado
+    // Garante o carregamento imediato do banco de dados logo na inicialização se o usuário estiver autenticado ou acessando rota pública
     useEffect(() => {
+        // Verifica se a URL atual é do tipo /catalogo/ID_DO_USUARIO
+        const path = window.location.pathname;
+        const match = path.match(/^\/catalogo\/([^/]+)$/);
+
+        if (match) {
+            const storeUserId = match[1];
+            setIsPublicCatalog(true);
+            
+            // Busca os produtos e nome da loja publicamente do backend
+            fetch(`${API_URL}/public/catalogo/${storeUserId}`)
+                .then(res => res.json())
+                .then(data => {
+                    setPublicStoreData(data);
+                    setLoading(false);
+                })
+                .catch(err => {
+                    console.error("Erro ao carregar catálogo público:", err);
+                    setLoading(false);
+                });
+            return;
+        }
+
         const savedToken = localStorage.getItem("byse_token");
         const savedUser = localStorage.getItem("byse_user");
 
@@ -221,7 +247,6 @@ function SupplementSystem() {
     };
 
     const handleUpdateProducts = async (newProductsOrProduct) => {
-        // Suporta tanto o array completo quanto um produto individual enviado diretamente
         const latestProduct = Array.isArray(newProductsOrProduct) 
             ? (newProductsOrProduct.length > 0 ? newProductsOrProduct[newProductsOrProduct.length - 1] : null)
             : newProductsOrProduct;
@@ -286,7 +311,6 @@ function SupplementSystem() {
                 setProducts(updatedProducts);
                 localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
             } else {
-                // Fallback para POST se a rota PUT não existir ou retornar erro
                 await handleUpdateProducts(updatedProduct);
             }
         } catch (err) {
@@ -409,7 +433,44 @@ function SupplementSystem() {
     if (loading) {
         return (
             <div style={{ minHeight: "100vh", background: bg, display: "flex", alignItems: "center", justifyContent: "center", color: text, fontFamily: FONT_BODY }}>
-                Carregando dados do banco...
+                Carregando dados...
+            </div>
+        );
+    }
+
+    // SE FOR UM ACESSO PÚBLICO AO CATÁLOGO:
+    if (isPublicCatalog) {
+        return (
+            <div style={{ minHeight: "100vh", background: "#0C0C0C", color: "#F0EFE9", padding: "20px", fontFamily: FONT_BODY }}>
+                <div style={{ maxWidth: 800, margin: "0 auto" }}>
+                    <h1 style={{ textAlign: "center", marginBottom: 8, fontFamily: FONT_DISPLAY }}>{publicStoreData?.storeName || "Catálogo da Loja"}</h1>
+                    <p style={{ textAlign: "center", color: "#8A8A82", marginBottom: 24 }}>Confira nossos produtos disponíveis:</p>
+                    
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
+                        {publicStoreData?.products?.map((p: any) => (
+                            <div key={p.id} style={{ background: "#1C1C1C", border: "1px solid #2E2E2E", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                                <div>
+                                    {p.image_url && <img src={p.image_url} alt={p.name} style={{ width: "100%", height: 140, objectFit: "cover", borderRadius: 8, marginBottom: 12 }} />}
+                                    <h3 style={{ fontSize: 16, marginBottom: 6 }}>{p.name}</h3>
+                                    <p style={{ fontSize: 13, color: "#8A8A82", marginBottom: 12 }}>{p.category}</p>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 18, fontWeight: "bold", color: "#DC2626", marginBottom: 12 }}>
+                                        R$ {Number(p.price).toFixed(2)}
+                                    </div>
+                                    <a 
+                                        href={`https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no produto: ${p.name}`)}`} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        style={{ display: "block", textAlign: "center", background: "#25D366", color: "#fff", padding: "10px", borderRadius: 8, textDecoration: "none", fontWeight: "bold", fontSize: 13 }}
+                                    >
+                                        Comprar via WhatsApp
+                                    </a>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         );
     }
@@ -447,6 +508,7 @@ function SupplementSystem() {
         if (tab === "catalogo") return <Catalogo {...{ products, sales, card, border, subtext, accent, text, dark, device }} />;     
         if (tab === "cashback") return <Cashback customers={customers} setCustomers={handleUpdateCustomers} {...{ cashbackPct, setCashbackPct, cashbackValidityDays, setCashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "fiados") return <Fiados fiados={fiados} setFiados={handleUpdateFiados} {...{ customers, card, border, subtext, accent, text }} />;     
+        
         if (tab === "preTreino") return (
             <PreTreino 
                 clientes={customers} 
@@ -455,8 +517,17 @@ function SupplementSystem() {
                     localStorage.setItem("byse_customers", JSON.stringify(newCusts));
                     handleUpdateCustomers(newCusts);
                 }} 
-                produtosPreTreino={products}
-                setProdutosPreTreino={handleUpdateProducts} 
+                produtosPreTreino={products.filter(p => p.category && p.category.toLowerCase().includes("pré-treino"))}
+                setProdutosPreTreino={(prodOrList) => {
+                    const prod = Array.isArray(prodOrList) ? prodOrList[prodOrList.length - 1] : prodOrList;
+                    if (prod) {
+                        const productWithCategory = {
+                            ...prod,
+                            category: prod.category && prod.category.trim() !== "" ? prod.category : "Pré-Treino"
+                        };
+                        handleUpdateProducts(productWithCategory);
+                    }
+                }} 
                 registros={preTreinoRecords} 
                 setRegistros={(newRecs) => {
                     setPreTreinoRecords(newRecs);
@@ -468,6 +539,7 @@ function SupplementSystem() {
                 {...{ card, border, subtext, accent, text, dark }} 
             />
         );
+
         if (tab === "whatsapp") return <WhatsApp {...{ waSchedule, setWaSchedule, cashbackValidityDays, card, border, subtext, accent, text }} />;     
         if (tab === "trafego") return <TrafegoPago {...{ adEntries, setAdEntries, sales, card, border, subtext, accent, text }} />;     
         if (tab === "canais") return <CanaisDeVenda {...{ sales, setSales, card, border, subtext, accent, text }} />;     

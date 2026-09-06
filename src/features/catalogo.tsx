@@ -104,7 +104,8 @@ export function Catalogo({
   dark,
   device
 }) {
-  const [products, setProducts] = useState(initialProducts || []);
+  // Garante que se initialProducts vier vazio, não quebre a listagem
+  const [products, setProducts] = useState(initialProducts && initialProducts.length > 0 ? initialProducts : []);
   const [showPrices, setShowPrices] = useState(true);
   const [banner, setBanner] = useState({
     storeName: "Minha Loja de Suplementos",
@@ -145,16 +146,30 @@ export function Catalogo({
       fetch(`/api/public/catalogo/${publicUserId}`)
         .then(res => res.json())
         .then(data => {
-          if (data && data.products) {
+          if (data && data.products && data.products.length > 0) {
             setProducts(data.products);
           }
           if (data && data.storeName) {
             setBanner(b => ({ ...b, storeName: data.storeName }));
           }
         })
-        .catch(err => console.error("Erro ao carregar catálogo público:", err));
+        .catch(err => {
+          console.warn("API pública não encontrada ou offline. Mantendo dados locais.", err);
+          // Fallback caso esteja rodando client-side puro sem backend de API
+          if ((!products || products.length === 0) && initialProducts) {
+            setProducts(initialProducts);
+          }
+        });
     }
   }, []);
+
+  // Define uma categoria padrão ativa automaticamente caso haja categorias e nenhuma esteja selecionada
+  useEffect(() => {
+    const cats = Array.from(new Set(products.map((p) => p.category)));
+    if (cats.length > 0 && !activeCategory) {
+      setActiveCategory(cats[0]);
+    }
+  }, [products]);
 
   const categories = Array.from(new Set(products.map((p) => p.category)));
   const catalogLink = window.location.href.includes('/catalogo/') 
@@ -256,7 +271,7 @@ export function Catalogo({
 
   const activeProducts = activeCategory
     ? products.filter((p) => p.category === activeCategory)
-    : [];
+    : products; // Se nenhuma categoria estiver selecionada explicitamente, exibe todas para evitar tela em branco
 
   const qtyByProduct = {};
   if (activeCategory) {
@@ -702,7 +717,7 @@ export function Catalogo({
           gap: 8,
           overflowX: "auto",
           paddingBottom: 8,
-          marginBottom: activeCategory ? 16 : 24,
+          marginBottom: 16,
           scrollbarWidth: "thin"
         }}
       >
@@ -711,7 +726,7 @@ export function Catalogo({
           return (
             <button
               key={cat}
-              onClick={() => setActiveCategory(active ? null : cat)}
+              onClick={() => setActiveCategory(cat)}
               style={{
                 flexShrink: 0,
                 padding: "9px 16px",
@@ -731,7 +746,7 @@ export function Catalogo({
         })}
       </div>
 
-      {!activeCategory && (
+      {products.length === 0 ? (
         <div
           style={{
             textAlign: "center",
@@ -741,11 +756,9 @@ export function Catalogo({
           }}
         >
           <Tag size={26} style={{ opacity: 0.4, marginBottom: 8 }} />
-          <div>Selecione uma categoria acima para ver os produtos.</div>
+          <div>Nenhum produto cadastrado ou disponível no momento.</div>
         </div>
-      )}
-
-      {activeCategory && (
+      ) : (
         <div style={{ marginBottom: 24 }}>
           <div
             style={{
