@@ -157,5 +157,17 @@ export async function initDb() {
       schedules JSONB DEFAULT '[]'
     );
   `);
+
+  // Migração automática: Converte chaves antigas de estoque para "Loja Física" mantendo a quantidade
+  await pool.query(`
+    UPDATE products 
+    SET stocks = jsonb_set(
+        stocks::jsonb - 'Estoque Principal' - 'Loja Principal',
+        '{Loja Física}',
+        COALESCE(stocks->'Estoque Principal', stocks->'Loja Principal', '0'::jsonb)
+    )
+    WHERE stocks ? 'Estoque Principal' OR stocks ? 'Loja Principal';
+  `).catch(err => console.log('Aviso na migração de estoques:', err.message));
+
   console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
 }

@@ -617,7 +617,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         for (const item of items) {
             const prodId = item.id || item.productId;
             const qtdVendida = Number(item.quantity || item.qty || 1);
-            const rawLocal = item.local || item.location || item.stockLocationId || 'Estoque Principal';
+            const rawLocal = item.local || item.location || item.stockLocationId || 'Loja Física';
             const localName = locaisMap[rawLocal] || rawLocal;
 
             if (prodId) {
@@ -638,6 +638,10 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
                             const chaveEncontrada = Object.keys(stocksObj).find(k => k.toLowerCase() === localName.toLowerCase());
                             if (chaveEncontrada) {
                                 chaveAlvo = chaveEncontrada;
+                            } else if (stocksObj['Estoque Principal'] !== undefined && (localName === 'Loja Física' || localName === 'loja-fisica')) {
+                                chaveAlvo = 'Estoque Principal';
+                            } else if (Object.keys(stocksObj).length === 1) {
+                                chaveAlvo = Object.keys(stocksObj)[0];
                             }
                         }
 
@@ -819,15 +823,15 @@ app.get('/api/locais', authMiddleware, async (req, res) => {
             const defaultLocId = 'loc_main_' + userId;
             await pool.query(
                 'INSERT INTO stock_locations (id, user_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
-                [defaultLocId, userId, 'Estoque Principal']
+                [defaultLocId, userId, 'Loja Física']
             ).catch(() => {});
-            return res.status(200).json([{ id: defaultLocId, name: 'Estoque Principal' }]);
+            return res.status(200).json([{ id: defaultLocId, name: 'Loja Física' }]);
         }
 
         return res.status(200).json(result.rows);
     } catch (error) {
         console.error('Erro ao buscar locais:', error);
-        return res.status(200).json([{ id: 'loc_main_' + req.user.id, name: 'Estoque Principal' }]);
+        return res.status(200).json([{ id: 'loc_main_' + req.user.id, name: 'Loja Física' }]);
     }
 });
 
@@ -998,14 +1002,13 @@ app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
     return res.json({ status: connectionStatus, qr: lastQrCode });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code atual (Com tratamento adequado de status HTTP)
+// Rota dedicada para o front-end solicitar explicitamente o QR Code atual (Tratada com status 200)
 app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
     if (connectionStatus === 'connected') {
         return res.status(400).json({ error: 'WhatsApp já está conectado!' });
     }
     if (!lastQrCode) {
-        // CORREÇÃO: Retornando status 202 (Accepted / Processando) ou 404 para evitar falso positivo no front-end
-        return res.status(202).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
+        return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
     return res.json({ success: true, qr: lastQrCode });
 });
