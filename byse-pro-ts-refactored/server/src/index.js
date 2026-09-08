@@ -21,64 +21,66 @@ if (typeof initDb === 'function') {
 }
 
 // ==========================================
-// GERENCIAMENTO DA SESSÃO E CONEXÃO BAILEYS
+// GERENCIAMENTO MULTI-USUÁRIO DA SESSÃO BAILEYS
 // ==========================================
-let waSocket = null;
-let connectionStatus = 'disconnected'; // disconnected, connecting, connected, qr_needed
-let lastQrCodeBase64 = null;
+const activeSessions = {}; // Estrutura: { [userId]: { sock, status, qr } }
 
-async function connectToWhatsApp() {
-    try {
-        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-        
-        waSocket = makeWASocket({
-            auth: state,
-            printQRInTerminal: false, // Desativado para não poluir o terminal do VS Code/Railway
-        });
-
-        waSocket.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, qr } = update;
-
-            if (qr) {
-                connectionStatus = 'qr_needed';
-                try {
-                    // ATUALIZAÇÃO APLICADA: Tratamento robusto e conversão limpa para Base64
-                    lastQrCodeBase64 = await QRCode.toDataURL(qr, {
-                        errorCorrectionLevel: 'M',
-                        margin: 2,
-                        scale: 6
-                    });
-                    console.log('--- NOVO QR CODE DO WHATSAPP GERADO PARA O FRONT-END ---');
-                } catch (err) {
-                    console.error('Erro ao converter QR Code para Base64:', err);
-                }
-            }
-
-            if (connection === 'close') {
-                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                connectionStatus = 'disconnected';
-                lastQrCodeBase64 = null;
-                console.log('Conexão fechada com o WhatsApp. Reconectando:', shouldReconnect);
-                if (shouldReconnect) {
-                    connectToWhatsApp();
-                }
-            } else if (connection === 'open') {
-                connectionStatus = 'connected';
-                lastQrCodeBase64 = null;
-                console.log('✅ Baileys conectado com sucesso ao WhatsApp!');
-            }
-        });
-
-        waSocket.ev.on('creds.update', saveCreds);
-
-    } catch (error) {
-        console.error('Erro ao iniciar sessão do Baileys:', error);
-        connectionStatus = 'disconnected';
+async function getOrCreateWhatsAppSession(userId) {
+    if (activeSessions[userId]?.sock) {
+        return activeSessions[userId];
     }
-}
 
-// Inicia a tentativa de conexão com o WhatsApp ao subir o servidor
-connectToWhatsApp();
+    const sessionPath = `auth_info_baileys_${userId}`;
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false, // Desativado para não poluir o terminal
+    });
+
+    activeSessions[userId] = {
+        sock,
+        status: 'disconnected',
+        qr: null
+    };
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            activeSessions[userId].status = 'qr_needed';
+            try {
+                activeSessions[userId].qr = await QRCode.toDataURL(qr, {
+                    errorCorrectionLevel: 'M',
+                    margin: 2,
+                    scale: 6
+                });
+                console.log(`--- NOVO QR CODE GERADO PARA O USUÁRIO: ${userId} ---`);
+            } catch (err) {
+                console.error(`Erro ao converter QR Code para Base64 (User ${userId}):`, err);
+            }
+        }
+
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            activeSessions[userId].status = 'disconnected';
+            activeSessions[userId].qr = null;
+            console.log(`Conexão fechada para o usuário ${userId}. Reconectando:`, shouldReconnect);
+            if (shouldReconnect) {
+                delete activeSessions[userId];
+                getOrCreateWhatsAppSession(userId);
+            }
+        } else if (connection === 'open') {
+            activeSessions[userId].status = 'connected';
+            activeSessions[userId].qr = null;
+            console.log(`✅ WhatsApp conectado com sucesso para o usuário ${userId}!`);
+        }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    return activeSessions[userId];
+}
 
 app.post('/api/login', async (req, res) => {
     try {
@@ -1002,25 +1004,30 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// ROTAS DE WHATSAPP & INTEGRAÇÃO BAILEYS
+// ROTAS DE WHATSAPP & INTEGRAÇÃO BAILEYS ISOLADAS POR USER_ID
 // ==========================================
 
-// Rota para checar status geral e QR Code ativo em Base64
-app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
-    return res.json({ status: connectionStatus, qr: lastQrCodeBase64 });
+// Rota para checar status e QR Code do usuário autenticado
+app.get('/api/whatsapp/status', authMiddleware, async (req, res) => {
+    const userId = req.user.id;
+    const session = await getOrCreateWhatsAppSession(userId);
+    return res.json({ status: session.status, qr: session.qr });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code atual com logs adicionados
-app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
-    if (connectionStatus === 'connected') {
-        return res.status(400).json({ error: 'WhatsApp já está conectado!' });
+// Rota dedicada para o front-end solicitar explicitamente o QR Code do usuário
+app.get('/api/whatsapp/qr', authMiddleware, async (req, res) => {
+    const userId = req.user.id;
+    const session = await getOrCreateWhatsAppSession(userId);
+
+    if (session.status === 'connected') {
+        return res.status(400).json({ error: 'WhatsApp já está conectado para este usuário!' });
     }
-    if (!lastQrCodeBase64) {
-        console.log('Tentativa de buscar QR code, mas lastQrCodeBase64 está nulo.');
+    if (!session.qr) {
+        console.log(`Tentativa de buscar QR code para o usuário ${userId}, mas session.qr está nulo.`);
         return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
-    console.log('Enviando QR Code Base64 para o front-end com sucesso.');
-    return res.json({ success: true, qr: lastQrCodeBase64 });
+    console.log(`Enviando QR Code Base64 para o front-end do usuário ${userId} com sucesso.`);
+    return res.json({ success: true, qr: session.qr });
 });
 
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
@@ -1054,14 +1061,16 @@ app.post('/api/whatsapp', authMiddleware, async (req, res) => {
     }
 });
 
-// Rota para disparar mensagens em massa automaticamente pelo Backend usando Baileys
+// Rota para disparar mensagens em massa utilizando a sessão específica do usuário
 app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
     try {
-        if (connectionStatus !== 'connected' || !waSocket) {
+        const userId = req.user.id;
+        const session = await getOrCreateWhatsAppSession(userId);
+
+        if (session.status !== 'connected' || !session.sock) {
             return res.status(400).json({ error: 'WhatsApp não está conectado no backend. Escaneie o QR Code na tela primeiro.' });
         }
 
-        const userId = req.user.id;
         const { text, sendToAll, customerIds } = req.body;
 
         let query = 'SELECT name, phone, cashback FROM customers WHERE user_id = $1 AND phone IS NOT NULL AND phone != \'\'';
@@ -1092,7 +1101,7 @@ app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
 
             const jid = `${phoneClean}@s.whatsapp.net`;
             try {
-                await waSocket.sendMessage(jid, { text: message });
+                await session.sock.sendMessage(jid, { text: message });
                 sentCount++;
                 // Pequeno delay para evitar bloqueio por spam
                 await new Promise(resolve => setTimeout(resolve, 2000));
