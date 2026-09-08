@@ -42,7 +42,7 @@ async function connectToWhatsApp() {
             if (qr) {
                 connectionStatus = 'qr_needed';
                 try {
-                    // ATUALIZAÇÃO APLICADA: Opções avançadas de margem e correção de erro para evitar falhas na tag <img>
+                    // ATUALIZAÇÃO APLICADA: Tratamento robusto e conversão limpa para Base64
                     lastQrCodeBase64 = await QRCode.toDataURL(qr, {
                         errorCorrectionLevel: 'M',
                         margin: 2,
@@ -1010,14 +1010,16 @@ app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
     return res.json({ status: connectionStatus, qr: lastQrCodeBase64 });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code atual formatado em imagem
+// Rota dedicada para o front-end solicitar explicitamente o QR Code atual com logs adicionados
 app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
     if (connectionStatus === 'connected') {
         return res.status(400).json({ error: 'WhatsApp já está conectado!' });
     }
     if (!lastQrCodeBase64) {
+        console.log('Tentativa de buscar QR code, mas lastQrCodeBase64 está nulo.');
         return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
+    console.log('Enviando QR Code Base64 para o front-end com sucesso.');
     return res.json({ success: true, qr: lastQrCodeBase64 });
 });
 
@@ -1124,7 +1126,7 @@ app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
         const customers = customersRes.rows;
 
         if (customers.length === 0) {
-            return res.status(400).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
+            return res.status(0).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
         }
 
         const messagesList = customers.map(c => {
