@@ -89,8 +89,8 @@ function WhatsApp({
         const data = await res.json();
         setConnectionStatus(data.status);
         if (data.qr) {
-          const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.qr)}`;
-          setQrCodeUrl(qrImageUrl);
+          // O backend agora envia o Data URL gerado pela biblioteca qrcode (Base64)
+          setQrCodeUrl(data.qr);
         } else if (data.status === "connected") {
           setQrCodeUrl(null);
         }
@@ -154,10 +154,8 @@ function WhatsApp({
       const res = await fetch(`${API_URL}/api/whatsapp/qr`, { headers });
       const data = await res.json();
       
-      // CORREÇÃO: Verificação rigorosa do sucesso e existência de 'data.qr'
       if (res.ok && data.success && data.qr) {
-        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.qr)}`;
-        setQrCodeUrl(qrImageUrl);
+        setQrCodeUrl(data.qr);
         setConnectionStatus("qr_needed");
       } else {
         alert(data.message || data.error || "QR Code ainda não está pronto. Aguarde alguns instantes e tente novamente.");

@@ -5,10 +5,10 @@ import { pool, initDb } from './db.js';
 import bcrypt from 'bcrypt';
 import 'dotenv/config';
 
-// Importações do Baileys e utilitários
+// Importações do Baileys, utilitários e gerador de QR Code em imagem
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import qrcodeTerminal from 'qrcode-terminal';
+import QRCode from 'qrcode';
 
 const app = express();
 
@@ -25,7 +25,7 @@ if (typeof initDb === 'function') {
 // ==========================================
 let waSocket = null;
 let connectionStatus = 'disconnected'; // disconnected, connecting, connected, qr_needed
-let lastQrCode = null;
+let lastQrCodeBase64 = null;
 
 async function connectToWhatsApp() {
     try {
@@ -33,30 +33,34 @@ async function connectToWhatsApp() {
         
         waSocket = makeWASocket({
             auth: state,
-            printQRInTerminal: true,
+            printQRInTerminal: false, // Desativado para não poluir o terminal do VS Code/Railway
         });
 
         waSocket.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
-                lastQrCode = qr;
                 connectionStatus = 'qr_needed';
-                console.log('--- QR CODE DO WHATSAPP GERADO ---');
-                qrcodeTerminal.generate(qr, { small: true });
+                try {
+                    // Converte o QR Code diretamente para Data URL (Base64) para o front-end exibir
+                    lastQrCodeBase64 = await QRCode.toDataURL(qr);
+                    console.log('--- NOVO QR CODE DO WHATSAPP GERADO PARA O FRONT-END ---');
+                } catch (err) {
+                    console.error('Erro ao converter QR Code para Base64:', err);
+                }
             }
 
             if (connection === 'close') {
                 const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
                 connectionStatus = 'disconnected';
-                lastQrCode = null;
+                lastQrCodeBase64 = null;
                 console.log('Conexão fechada com o WhatsApp. Reconectando:', shouldReconnect);
                 if (shouldReconnect) {
                     connectToWhatsApp();
                 }
             } else if (connection === 'open') {
                 connectionStatus = 'connected';
-                lastQrCode = null;
+                lastQrCodeBase64 = null;
                 console.log('✅ Baileys conectado com sucesso ao WhatsApp!');
             }
         });
@@ -997,20 +1001,20 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
 // ROTAS DE WHATSAPP & INTEGRAÇÃO BAILEYS
 // ==========================================
 
-// Rota para checar status geral e QR Code ativo
+// Rota para checar status geral e QR Code ativo em Base64
 app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
-    return res.json({ status: connectionStatus, qr: lastQrCode });
+    return res.json({ status: connectionStatus, qr: lastQrCodeBase64 });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code atual (Tratada com status 200)
+// Rota dedicada para o front-end solicitar explicitamente o QR Code atual formatado em imagem
 app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
     if (connectionStatus === 'connected') {
         return res.status(400).json({ error: 'WhatsApp já está conectado!' });
     }
-    if (!lastQrCode) {
+    if (!lastQrCodeBase64) {
         return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
-    return res.json({ success: true, qr: lastQrCode });
+    return res.json({ success: true, qr: lastQrCodeBase64 });
 });
 
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
