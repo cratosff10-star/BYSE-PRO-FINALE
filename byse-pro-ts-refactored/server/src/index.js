@@ -998,13 +998,14 @@ app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
     return res.json({ status: connectionStatus, qr: lastQrCode });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code atual (Tratada com status 200)
+// Rota dedicada para o front-end solicitar explicitamente o QR Code atual (Com tratamento adequado de status HTTP)
 app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
     if (connectionStatus === 'connected') {
         return res.status(400).json({ error: 'WhatsApp já está conectado!' });
     }
     if (!lastQrCode) {
-        return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
+        // CORREÇÃO: Retornando status 202 (Accepted / Processando) ou 404 para evitar falso positivo no front-end
+        return res.status(202).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
     return res.json({ success: true, qr: lastQrCode });
 });

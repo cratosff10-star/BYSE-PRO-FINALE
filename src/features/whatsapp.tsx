@@ -154,12 +154,13 @@ function WhatsApp({
       const res = await fetch(`${API_URL}/api/whatsapp/qr`, { headers });
       const data = await res.json();
       
-      if (res.ok && data.qr) {
+      // CORREÇÃO: Verificação rigorosa do sucesso e existência de 'data.qr'
+      if (res.ok && data.success && data.qr) {
         const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.qr)}`;
         setQrCodeUrl(qrImageUrl);
         setConnectionStatus("qr_needed");
       } else {
-        alert(data.error || "WhatsApp já está conectado ou aguarde gerar o QR Code.");
+        alert(data.message || data.error || "QR Code ainda não está pronto. Aguarde alguns instantes e tente novamente.");
       }
     } catch (err) {
       console.error("Erro ao buscar QR Code:", err);
