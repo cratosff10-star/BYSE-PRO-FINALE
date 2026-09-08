@@ -389,7 +389,11 @@ function WhatsApp({
         ) : qrCodeUrl ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             <div style={{ background: "#fff", padding: 10, borderRadius: 8, display: "inline-block", border: `1px solid ${border}` }}>
-              <img src={qrCodeUrl} alt="QR Code WhatsApp" style={{ width: 200, height: 200 }} />
+              <img 
+                src={qrCodeUrl?.startsWith("data:") ? qrCodeUrl : `data:image/png;base64,${qrCodeUrl}`} 
+                alt="QR Code WhatsApp" 
+                style={{ width: 200, height: 200 }} 
+              />
             </div>
             <p style={{ fontSize: 11.5, color: subtext }}>Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e escaneie o código acima.</p>
             <button
