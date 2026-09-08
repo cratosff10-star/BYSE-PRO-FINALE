@@ -13,7 +13,10 @@ import {
   MessageCircle,
   Send,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  ArrowRight,
+  RefreshCw,
+  QrCode
 } from "lucide-react";
 import { FONT_BODY, SUCCESS } from "../data/constants";
 import { inputStyle } from "../utils/helpers";
@@ -59,12 +62,43 @@ function WhatsApp({
 
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [sendingNowId, setSendingNowId] = useState(null);
+  const [sendStatusMessage, setSendStatusMessage] = useState(null);
+
+  // Estados para gerenciar a leitura do QR Code no Front-end
+  const [connectionStatus, setConnectionStatus] = useState("disconnected");
+  const [qrCodeUrl, setQrCodeUrl] = useState(null);
+  const [loadingQr, setLoadingQr] = useState(false);
 
   useEffect(() => {
     if (customers && customers.length > 0) {
       setLocalCustomers(customers);
     }
   }, [customers]);
+
+  const checkWhatsAppStatus = async () => {
+    const token = localStorage.getItem("byse_token");
+    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+    const headers = { 
+      "Authorization": `Bearer ${token}`, 
+      "x-user-id": user.id || localStorage.getItem("userId") || "user_1" 
+    };
+
+    try {
+      const res = await fetch(`${API_URL}/api/whatsapp/status`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setConnectionStatus(data.status);
+        if (data.qr) {
+          const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.qr)}`;
+          setQrCodeUrl(qrImageUrl);
+        } else if (data.status === "connected") {
+          setQrCodeUrl(null);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao checar status do WhatsApp:", err);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -93,21 +127,57 @@ function WhatsApp({
             setWaSchedule(data);
           }
         }
+
+        await checkWhatsAppStatus();
       } catch (error) {
         console.error("Erro ao carregar dados do WhatsApp:", error);
       }
     };
 
     fetchData();
+
+    // Polling a cada 5 segundos para atualizar o status da conexão/QR Code automaticamente
+    const interval = setInterval(checkWhatsAppStatus, 5000);
+    return () => clearInterval(interval);
   }, [setWaSchedule, API_URL]);
 
-  const handleRedirectWhatsAppBatch = async (schedule) => {
+  const fetchQrCode = async () => {
+    setLoadingQr(true);
+    try {
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+      const headers = { 
+        "Authorization": `Bearer ${token}`, 
+        "x-user-id": user.id || "user_1" 
+      };
+
+      const res = await fetch(`${API_URL}/api/whatsapp/qr`, { headers });
+      const data = await res.json();
+      
+      if (res.ok && data.qr) {
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.qr)}`;
+        setQrCodeUrl(qrImageUrl);
+        setConnectionStatus("qr_needed");
+      } else {
+        alert(data.error || "WhatsApp já está conectado ou aguarde gerar o QR Code.");
+      }
+    } catch (err) {
+      console.error("Erro ao buscar QR Code:", err);
+      alert("Erro ao buscar o QR Code do servidor.");
+    } finally {
+      setLoadingQr(false);
+    }
+  };
+
+  const handleSendBatchAutomated = async (schedule) => {
     setSendingNowId(schedule.id);
+    setSendStatusMessage("Conectando ao WhatsApp para disparo em massa...");
+    
     const token = localStorage.getItem("byse_token");
     const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
 
     try {
-      const res = await fetch(`${API_URL}/api/whatsapp/prepare-batch`, {
+      const res = await fetch(`${API_URL}/api/whatsapp/send-batch`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -126,23 +196,22 @@ function WhatsApp({
         const rawText = await res.text();
         console.error("Resposta do servidor não é um JSON:", rawText);
         alert(`O servidor respondeu com um erro (${res.status}).`);
+        setSendStatusMessage(null);
         return;
       }
 
       const data = await res.json();
       
-      if (res.ok && data.targets && data.targets.length > 0) {
-        data.targets.forEach((target, index) => {
-          setTimeout(() => {
-            window.open(target.whatsappUrl, '_blank');
-          }, index * 400);
-        });
+      if (res.ok && data.success) {
+        setSendStatusMessage(data.message || "Disparo concluído com sucesso pelo Baileys!");
       } else {
-        alert(data.error || "Nenhum cliente selecionado possui telefone válido.");
+        alert(data.error || "Erro ao realizar o disparo.");
+        setSendStatusMessage(null);
       }
     } catch (err) {
-      console.error("Erro ao redirecionar para o WhatsApp:", err);
-      alert("Erro ao conectar com o servidor. Tente novamente em instantes.");
+      console.error("Erro ao enviar mensagens em lote:", err);
+      alert("Erro ao conectar com o servidor. Verifique se o backend está rodando e escaneou o QR Code.");
+      setSendStatusMessage(null);
     } finally {
       setSendingNowId(null);
     }
@@ -300,25 +369,68 @@ function WhatsApp({
     <div>
       <SectionTitle
         title="Disparos via WhatsApp"
-        sub="Gerencie programações e envie mensagens personalizadas direto para o WhatsApp dos clientes"
+        sub="Gerencie programações e envie mensagens automatizadas diretamente pelo backend"
         subtext={subtext}
       />
 
-      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 18, marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <MessageCircle size={18} color={accent} />
-            Central de Envios e Automação Web
+      {/* Bloco de Conexão e Leitura do QR Code na Tela */}
+      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 18, marginBottom: 20, textAlign: "center" }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <QrCode size={18} color={accent} />
+          Conexão com o WhatsApp (Baileys)
+        </div>
+        <p style={{ fontSize: 12.5, color: subtext, marginBottom: 12 }}>
+          Status atual: <strong style={{ color: connectionStatus === "connected" ? SUCCESS : accent }}>{connectionStatus === "connected" ? "Conectado ✅" : "Desconectado / Aguardando leitura"}</strong>
+        </p>
+
+        {connectionStatus === "connected" ? (
+          <div style={{ color: SUCCESS, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <CheckCircle2 size={16} /> WhatsApp conectado e pronto para disparos em massa!
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: SUCCESS, display: "inline-block" }} />
-            <Pill color={SUCCESS}>Pronto para Uso</Pill>
+        ) : qrCodeUrl ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <div style={{ background: "#fff", padding: 10, borderRadius: 8, display: "inline-block", border: `1px solid ${border}` }}>
+              <img src={qrCodeUrl} alt="QR Code WhatsApp" style={{ width: 200, height: 200 }} />
+            </div>
+            <p style={{ fontSize: 11.5, color: subtext }}>Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e escaneie o código acima.</p>
+            <button
+              onClick={fetchQrCode}
+              style={{ background: "transparent", border: `1px solid ${border}`, color: text, borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+            >
+              Atualizar QR Code
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={fetchQrCode}
+            disabled={loadingQr}
+            style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+          >
+            {loadingQr ? "Gerando QR Code..." : "Gerar QR Code na Tela"}
+          </button>
+        )}
+      </div>
+
+      {/* Alerta de Status do Envio Automatizado */}
+      {sendStatusMessage && (
+        <div style={{ background: `${accent}12`, border: `2px solid ${accent}`, borderRadius: 12, padding: 18, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8, color: accent }}>
+              <Send size={18} />
+              Status do Disparo Automático
+            </div>
+            <button
+              onClick={() => setSendStatusMessage(null)}
+              style={{ background: "transparent", border: "none", cursor: "pointer", color: subtext }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div style={{ fontSize: 13, color: text }}>
+            {sendStatusMessage}
           </div>
         </div>
-        <p style={{ fontSize: 12.5, color: subtext, marginBottom: 0 }}>
-          O sistema dispara automaticamente pelas programações ativas no servidor via WhatsApp conectado ou gera links web personalizados.
-        </p>
-      </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {normalizedSchedule.map((schedule) => {
@@ -398,12 +510,12 @@ function WhatsApp({
                   </button>
 
                   <button
-                    onClick={() => handleRedirectWhatsAppBatch(schedule)}
+                    onClick={() => handleSendBatchAutomated(schedule)}
                     disabled={sendingNowId === schedule.id}
                     style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 7, padding: "7px 12px", cursor: "pointer", fontWeight: 700, fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
                   >
-                    <ExternalLink size={13} />
-                    {sendingNowId === schedule.id ? "Abrindo WhatsApp..." : "Enviar via Link Web"}
+                    <Send size={13} />
+                    {sendingNowId === schedule.id ? "Enviando Automaticamente..." : "Disparar para Todos"}
                   </button>
                 </div>
 

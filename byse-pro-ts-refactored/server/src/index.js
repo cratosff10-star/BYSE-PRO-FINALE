@@ -5,6 +5,11 @@ import { pool, initDb } from './db.js';
 import bcrypt from 'bcrypt';
 import 'dotenv/config';
 
+// Importações do Baileys e utilitários
+import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import qrcodeTerminal from 'qrcode-terminal';
+
 const app = express();
 
 app.use(express.json({ limit: '10mb' }));
@@ -14,6 +19,58 @@ app.use(cors());
 if (typeof initDb === 'function') {
     initDb().catch(err => console.error('Erro na inicialização do DB:', err));
 }
+
+// ==========================================
+// GERENCIAMENTO DA SESSÃO E CONEXÃO BAILEYS
+// ==========================================
+let waSocket = null;
+let connectionStatus = 'disconnected'; // disconnected, connecting, connected, qr_needed
+let lastQrCode = null;
+
+async function connectToWhatsApp() {
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+        
+        waSocket = makeWASocket({
+            auth: state,
+            printQRInTerminal: true, // Mantém opcionalmente no terminal também se desejar
+        });
+
+        waSocket.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
+
+            if (qr) {
+                lastQrCode = qr;
+                connectionStatus = 'qr_needed';
+                console.log('--- QR CODE DO WHATSAPP GERADO ---');
+                qrcodeTerminal.generate(qr, { small: true });
+            }
+
+            if (connection === 'close') {
+                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+                connectionStatus = 'disconnected';
+                lastQrCode = null;
+                console.log('Conexão fechada com o WhatsApp. Reconectando:', shouldReconnect);
+                if (shouldReconnect) {
+                    connectToWhatsApp();
+                }
+            } else if (connection === 'open') {
+                connectionStatus = 'connected';
+                lastQrCode = null;
+                console.log('✅ Baileys conectado com sucesso ao WhatsApp!');
+            }
+        });
+
+        waSocket.ev.on('creds.update', saveCreds);
+
+    } catch (error) {
+        console.error('Erro ao iniciar sessão do Baileys:', error);
+        connectionStatus = 'disconnected';
+    }
+}
+
+// Inicia a tentativa de conexão com o WhatsApp ao subir o servidor
+connectToWhatsApp();
 
 app.post('/api/login', async (req, res) => {
     try {
@@ -933,8 +990,24 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// ROTAS DE WHATSAPP (PREPARAÇÃO DE LOTE WA.ME)
+// ROTAS DE WHATSAPP & INTEGRAÇÃO BAILEYS
 // ==========================================
+
+// Rota para checar status geral e QR Code ativo
+app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
+    return res.json({ status: connectionStatus, qr: lastQrCode });
+});
+
+// Rota dedicada para o front-end solicitar explicitamente o QR Code atual
+app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
+    if (connectionStatus === 'connected') {
+        return res.status(400).json({ error: 'WhatsApp já está conectado!' });
+    }
+    if (!lastQrCode) {
+        return res.status(404).json({ error: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
+    }
+    return res.json({ success: true, qr: lastQrCode });
+});
 
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
     try {
@@ -967,6 +1040,61 @@ app.post('/api/whatsapp', authMiddleware, async (req, res) => {
     }
 });
 
+// Rota para disparar mensagens em massa automaticamente pelo Backend usando Baileys
+app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
+    try {
+        if (connectionStatus !== 'connected' || !waSocket) {
+            return res.status(400).json({ error: 'WhatsApp não está conectado no backend. Escaneie o QR Code na tela primeiro.' });
+        }
+
+        const userId = req.user.id;
+        const { text, sendToAll, customerIds } = req.body;
+
+        let query = 'SELECT name, phone, cashback FROM customers WHERE user_id = $1 AND phone IS NOT NULL AND phone != \'\'';
+        let params = [userId];
+
+        if (!sendToAll && Array.isArray(customerIds) && customerIds.length > 0) {
+            query += ' AND id = ANY($2)';
+            params.push(customerIds);
+        }
+
+        const customersRes = await pool.query(query, params);
+        const customers = customersRes.rows;
+
+        if (customers.length === 0) {
+            return res.status(400).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
+        }
+
+        let sentCount = 0;
+        for (const c of customers) {
+            let message = (text || '')
+                .replace(/{nome}/g, c.name || 'Cliente')
+                .replace(/{saldo}/g, `R$ ${Number(c.cashback || 0).toFixed(2)}`);
+
+            let phoneClean = c.phone.replace(/\D/g, '');
+            if (!phoneClean.startsWith('55')) {
+                phoneClean = '55' + phoneClean;
+            }
+
+            const jid = `${phoneClean}@s.whatsapp.net`;
+            try {
+                await waSocket.sendMessage(jid, { text: message });
+                sentCount++;
+                // Pequeno delay para evitar bloqueio por spam
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (err) {
+                console.error(`Falha ao enviar mensagem para ${phoneClean}:`, err);
+            }
+        }
+
+        return res.json({ success: true, message: `${sentCount} mensagens enviadas com sucesso via Baileys!` });
+    } catch (error) {
+        console.error('Erro ao enviar lote pelo Baileys:', error);
+        return res.status(500).json({ error: 'Erro ao processar envio em lote.' });
+    }
+});
+
+// Mantém também a rota de fallback para wa.me caso queira usar via frontend
 app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
