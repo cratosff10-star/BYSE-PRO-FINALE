@@ -42,8 +42,12 @@ async function connectToWhatsApp() {
             if (qr) {
                 connectionStatus = 'qr_needed';
                 try {
-                    // Converte o QR Code diretamente para Data URL (Base64) para o front-end exibir
-                    lastQrCodeBase64 = await QRCode.toDataURL(qr);
+                    // ATUALIZAÇÃO APLICADA: Opções avançadas de margem e correção de erro para evitar falhas na tag <img>
+                    lastQrCodeBase64 = await QRCode.toDataURL(qr, {
+                        errorCorrectionLevel: 'M',
+                        margin: 2,
+                        scale: 6
+                    });
                     console.log('--- NOVO QR CODE DO WHATSAPP GERADO PARA O FRONT-END ---');
                 } catch (err) {
                     console.error('Erro ao converter QR Code para Base64:', err);
