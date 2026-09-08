@@ -33,7 +33,7 @@ async function connectToWhatsApp() {
         
         waSocket = makeWASocket({
             auth: state,
-            printQRInTerminal: true, // Mantém opcionalmente no terminal também se desejar
+            printQRInTerminal: true,
         });
 
         waSocket.ev.on('connection.update', async (update) => {
@@ -998,13 +998,13 @@ app.get('/api/whatsapp/status', authMiddleware, (req, res) => {
     return res.json({ status: connectionStatus, qr: lastQrCode });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code atual
+// Rota dedicada para o front-end solicitar explicitamente o QR Code atual (Tratada com status 200)
 app.get('/api/whatsapp/qr', authMiddleware, (req, res) => {
     if (connectionStatus === 'connected') {
         return res.status(400).json({ error: 'WhatsApp já está conectado!' });
     }
     if (!lastQrCode) {
-        return res.status(404).json({ error: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
+        return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
     return res.json({ success: true, qr: lastQrCode });
 });
@@ -1094,7 +1094,7 @@ app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
     }
 });
 
-// Mantém também a rota de fallback para wa.me caso queira usar via frontend
+// Rota de fallback para wa.me caso queira usar via frontend
 app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
