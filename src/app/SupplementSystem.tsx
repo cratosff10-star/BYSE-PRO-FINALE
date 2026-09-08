@@ -17,7 +17,6 @@ import { DRE, Planos } from "../features/finance";
 import { Fiados } from "../features/fiados";
 import { PreTreino } from "../features/preTreino";
 
-    // Configuração inteligente de API para suportar Local (Localhost) e Produção (Railway)
     const getApiUrl = () => {
         if (import.meta.env.VITE_API_URL) {
             const raw = import.meta.env.VITE_API_URL;
@@ -39,7 +38,6 @@ function SupplementSystem() {
     const [device, setDevice] = useState("mobile");   
     const [tab, setTab] = useState("dashboard");    
 
-    // Novos estados para o modo catálogo público via URL
     const [publicStoreData, setPublicStoreData] = useState<any>(null);
     const [isPublicCatalog, setIsPublicCatalog] = useState(false);
 
@@ -52,7 +50,6 @@ function SupplementSystem() {
     const [adEntries, setAdEntries] = useState([]);
     const [stockLocations, setStockLocations] = useState([{ id: "loja", name: "Loja física" }, { id: "degustacao", name: "Degustação" }]);
 
-    // Estados dedicados ao Pré-Treino (Registros e Produtos específicos)
     const [preTreinoRecords, setPreTreinoRecords] = useState([]);
     const [produtosPreTreino, setProdutosPreTreino] = useState([]);
 
@@ -72,7 +69,6 @@ function SupplementSystem() {
         };
     };
 
-    // Sincronização estrita espelhando o banco de dados como fonte absoluta
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
 
@@ -130,7 +126,6 @@ function SupplementSystem() {
                 }
             }
 
-            // Sincronização de Registros de Pré-Treino
             const resPtRecs = await fetch(`${API_URL}/pre-treino/records`, { headers });
             if (resPtRecs.ok) {
                 const data = await resPtRecs.json();
@@ -140,7 +135,6 @@ function SupplementSystem() {
                 }
             }
 
-            // Sincronização de Produtos de Pré-Treino
             const resPtProds = await fetch(`${API_URL}/pre-treino/products`, { headers });
             if (resPtProds.ok) {
                 const data = await resPtProds.json();
@@ -154,7 +148,6 @@ function SupplementSystem() {
         }
     };
 
-    // Polling em background a cada 10 segundos para manter tudo sincronizado ao vivo com o servidor
     useEffect(() => {
         if (!user) return;
         const interval = setInterval(() => {
@@ -163,7 +156,6 @@ function SupplementSystem() {
         return () => clearInterval(interval);
     }, [user]);
 
-    // Garante o carregamento imediato do banco de dados logo na inicialização
     useEffect(() => {
         const path = window.location.pathname;
         const match = path.match(/^\/catalogo\/([^/]+)$/);

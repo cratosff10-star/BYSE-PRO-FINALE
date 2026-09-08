@@ -11,11 +11,9 @@ import {
   Save,
   X,
   MessageCircle,
-  Key,
-  QrCode,
-  Smartphone,
   Send,
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink
 } from "lucide-react";
 import { FONT_BODY, SUCCESS } from "../data/constants";
 import { inputStyle } from "../utils/helpers";
@@ -59,13 +57,7 @@ function WhatsApp({
 }) {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3333";
 
-  const [apiUrlInput, setApiUrlInput] = useState("");
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  
   const [localCustomers, setLocalCustomers] = useState(customers);
-  const [qrCodeData, setQrCodeData] = useState(null);
-  const [loadingQr, setLoadingQr] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState("Desconectado");
   const [sendingNowId, setSendingNowId] = useState(null);
 
   useEffect(() => {
@@ -85,31 +77,17 @@ function WhatsApp({
 
       try {
         const resClientes = await fetch(`${API_URL}/api/clientes`, { headers });
-        if (resClientes.ok) {
+        const contentTypeClientes = resClientes.headers.get("content-type");
+        if (resClientes.ok && contentTypeClientes && contentTypeClientes.includes("application/json")) {
           const clientesData = await resClientes.json();
           if (Array.isArray(clientesData) && clientesData.length > 0) {
             setLocalCustomers(clientesData);
           }
         }
 
-        const resConfig = await fetch(`${API_URL}/api/user/whatsapp-config`, { headers });
-        if (resConfig.ok) {
-          const configData = await resConfig.json();
-          setApiUrlInput(configData.apiUrl || "");
-          setApiKeyInput(configData.apiKey || "");
-          if (configData.apiUrl) {
-            const statusRes = await fetch(`${API_URL}/api/whatsapp/status/${user.id || 'user_1'}`, { headers });
-            if (statusRes.ok) {
-              const statusData = await statusRes.json();
-              setConnectionStatus(statusData.connected ? "Conectado" : "Desconectado");
-            } else {
-              setConnectionStatus("Configurado");
-            }
-          }
-        }
-
         const response = await fetch(`${API_URL}/api/whatsapp`, { headers });
-        if (response.ok) {
+        const contentTypeWa = response.headers.get("content-type");
+        if (response.ok && contentTypeWa && contentTypeWa.includes("application/json")) {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
             setWaSchedule(data);
@@ -123,79 +101,13 @@ function WhatsApp({
     fetchData();
   }, [setWaSchedule, API_URL]);
 
-  useEffect(() => {
-    let interval;
-    if (qrCodeData && connectionStatus !== "Conectado") {
-      const token = localStorage.getItem("byse_token");
-      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
-
-      interval = setInterval(async () => {
-        try {
-          const res = await fetch(`${API_URL}/api/whatsapp/status/${user.id || 'user_1'}`, {
-            headers: {
-              "Authorization": `Bearer ${token}`,
-              "x-user-id": user.id || "user_1"
-            }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.connected) {
-              setConnectionStatus("Conectado");
-              setQrCodeData(null); 
-              clearInterval(interval);
-            }
-          }
-        } catch (err) {
-          console.error("Erro ao verificar status da conexão:", err);
-        }
-      }, 3000);
-    }
-    return () => clearInterval(interval);
-  }, [qrCodeData, connectionStatus, API_URL]);
-
-  const handleGerarQrCode = async () => {
-    setLoadingQr(true);
-    const token = localStorage.getItem("byse_token");
-    const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
-
-    try {
-      const res = await fetch(`${API_URL}/api/whatsapp/connect`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "x-user-id": user.id || localStorage.getItem("userId") || "user_1",
-          "Content-Type": "application/json"
-        }
-      });
-      const data = await res.json();
-      if (data.qrCode) {
-        setQrCodeData(data.qrCode);
-        if (data.apiUrl) setApiUrlInput(data.apiUrl);
-        if (data.apiKey) setApiKeyInput(data.apiKey);
-        setConnectionStatus("Aguardando Leitura");
-      } else {
-        alert("Não foi possível gerar o QR Code. Verifique as credenciais da Evolution API.");
-      }
-    } catch (err) {
-      console.error("Erro ao gerar QR Code:", err);
-      alert("Erro ao conectar com o servidor do WhatsApp.");
-    } finally {
-      setLoadingQr(false);
-    }
-  };
-
-  const handleSendNow = async (schedule) => {
-    if (connectionStatus !== "Conectado") {
-      alert("Seu WhatsApp precisa estar conectado para realizar o envio imediato. Escaneie o QR Code.");
-      return;
-    }
-
+  const handleRedirectWhatsAppBatch = async (schedule) => {
     setSendingNowId(schedule.id);
     const token = localStorage.getItem("byse_token");
     const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
 
     try {
-      const res = await fetch(`${API_URL}/api/whatsapp/send-now`, {
+      const res = await fetch(`${API_URL}/api/whatsapp/prepare-batch`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -208,15 +120,29 @@ function WhatsApp({
           customerIds: schedule.customerIds
         })
       });
+
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const rawText = await res.text();
+        console.error("Resposta do servidor não é um JSON:", rawText);
+        alert(`O servidor respondeu com um erro (${res.status}).`);
+        return;
+      }
+
       const data = await res.json();
-      if (res.ok) {
-        alert(data.message || "Mensagem enviada com sucesso!");
+      
+      if (res.ok && data.targets && data.targets.length > 0) {
+        data.targets.forEach((target, index) => {
+          setTimeout(() => {
+            window.open(target.whatsappUrl, '_blank');
+          }, index * 400);
+        });
       } else {
-        alert(data.error || "Erro ao enviar mensagem.");
+        alert(data.error || "Nenhum cliente selecionado possui telefone válido.");
       }
     } catch (err) {
-      console.error("Erro no envio imediato:", err);
-      alert("Erro ao conectar com o servidor para envio.");
+      console.error("Erro ao redirecionar para o WhatsApp:", err);
+      alert("Erro ao conectar com o servidor. Tente novamente em instantes.");
     } finally {
       setSendingNowId(null);
     }
@@ -373,64 +299,27 @@ function WhatsApp({
   return (
     <div>
       <SectionTitle
-        title="Integração com WhatsApp"
-        sub="Conecte seu WhatsApp via QR Code, envie mensagens imediatas e gerencie disparos automáticos"
+        title="Disparos via WhatsApp"
+        sub="Gerencie programações e envie mensagens personalizadas direto para o WhatsApp dos clientes"
         subtext={subtext}
       />
 
-      {/* PAINEL DE CONEXÃO E BOTÃO ATIVO */}
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 18, marginBottom: 20 }}>
         <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Smartphone size={18} color={accent} />
-            Status da Conexão do WhatsApp
+            <MessageCircle size={18} color={accent} />
+            Central de Envios e Automação Web
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: connectionStatus === "Conectado" ? SUCCESS : "#e74c3c",
-              display: "inline-block"
-            }} />
-            <Pill color={connectionStatus === "Conectado" ? SUCCESS : subtext}>
-              {connectionStatus === "Conectado" ? "Ativo / Conectado" : connectionStatus}
-            </Pill>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: SUCCESS, display: "inline-block" }} />
+            <Pill color={SUCCESS}>Pronto para Uso</Pill>
           </div>
         </div>
-        <p style={{ fontSize: 12.5, color: subtext, marginBottom: 14 }}>
-          Gere o QR Code para conectar seu aparelho. O indicador acima mudará para <strong>Ativo / Conectado</strong> assim que a leitura for bem-sucedida.
+        <p style={{ fontSize: 12.5, color: subtext, marginBottom: 0 }}>
+          O sistema dispara automaticamente pelas programações ativas no servidor via WhatsApp conectado ou gera links web personalizados.
         </p>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={handleGerarQrCode}
-            disabled={loadingQr}
-            style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 8 }}
-          >
-            <QrCode size={16} />
-            {loadingQr ? "Gerando QR Code..." : "Gerar / Atualizar QR Code"}
-          </button>
-        </div>
-
-        {connectionStatus === "Conectado" && (
-          <div style={{ marginTop: 15, padding: 10, background: `${SUCCESS}15`, border: `1px solid ${SUCCESS}`, borderRadius: 8, color: SUCCESS, fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
-            <CheckCircle2 size={16} /> WhatsApp Ativo e pronto para disparos automáticos ou manuais!
-          </div>
-        )}
-
-        {qrCodeData && (
-          <div style={{ marginTop: 18, textAlign: "center", background: `${card}dd`, padding: 15, borderRadius: 10, border: `1px solid ${border}`, display: "inline-block" }}>
-            <img src={qrCodeData} alt="QR Code WhatsApp" style={{ width: 200, height: 200, borderRadius: 8 }} />
-            <p style={{ fontSize: 12, color: subtext, marginTop: 8 }}>
-              Abra o WhatsApp no celular {'>'} Aparelhos Conectados {'>'} Conectar um Aparelho
-            </p>
-          </div>
-        )}
       </div>
 
-      {/* LISTA DE AGENDAMENTOS E DISPARO MANUAL */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {normalizedSchedule.map((schedule) => {
           const usedDays = getUsedDays(schedule.id);
@@ -509,12 +398,12 @@ function WhatsApp({
                   </button>
 
                   <button
-                    onClick={() => handleSendNow(schedule)}
+                    onClick={() => handleRedirectWhatsAppBatch(schedule)}
                     disabled={sendingNowId === schedule.id}
-                    style={{ background: "#27ae60", color: "#fff", border: "none", borderRadius: 7, padding: "7px 12px", cursor: "pointer", fontWeight: 700, fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
+                    style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 7, padding: "7px 12px", cursor: "pointer", fontWeight: 700, fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
                   >
-                    <Send size={13} />
-                    {sendingNowId === schedule.id ? "Enviando..." : "Enviar Agora"}
+                    <ExternalLink size={13} />
+                    {sendingNowId === schedule.id ? "Abrindo WhatsApp..." : "Enviar via Link Web"}
                   </button>
                 </div>
 
@@ -562,7 +451,7 @@ function WhatsApp({
                     </div>
 
                     <div style={{ marginBottom: 12 }}>
-                      <SLabel subtext={subtext}>DESTINATÁRIOS (TELEFONES DOS CLIENTES)</SLabel>
+                      <SLabel subtext={subtext}>DESTINATÁRIOS</SLabel>
                       <div style={{ display: "flex", gap: 15, marginTop: 6, marginBottom: 8 }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", fontWeight: editSendToAll ? 600 : 400 }}>
                           <input
@@ -622,14 +511,15 @@ function WhatsApp({
                                       <span style={{ fontWeight: 600 }}>{c.name}</span>
                                       <span style={{ color: subtext, marginLeft: 8 }}>{c.phone || "Sem telefone"}</span>
                                     </div>
-                                    {isSelected && <Check size={14} color={accent} />}
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                    />
                                   </div>
                                 );
                               })
                             )}
-                          </div>
-                          <div style={{ fontSize: 11, color: subtext, marginTop: 6 }}>
-                            {editCustomerIds.length} cliente(s) selecionado(s).
                           </div>
                         </div>
                       )}

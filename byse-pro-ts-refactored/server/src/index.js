@@ -68,6 +68,10 @@ const authMiddleware = (req, res, next) => {
         }
     }
 
+    if (!finalUserId && req.headers['x-user-id']) {
+        finalUserId = req.headers['x-user-id'];
+    }
+
     if (!finalUserId) {
         return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
@@ -546,7 +550,6 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
             );
         }
 
-        // Mapeamento dos locais de estoque do usuário para garantir correspondência exata de chave (ID <-> Nome)
         const locaisRes = await client.query('SELECT id, name FROM stock_locations WHERE user_id = $1', [userId]);
         const locaisMap = {};
         locaisRes.rows.forEach(l => {
@@ -571,7 +574,6 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
                             stocksObj = {};
                         }
 
-                        // Procura a chave considerando correspondência exata ou case-insensitive
                         let chaveAlvo = localName;
                         if (stocksObj[rawLocal] !== undefined) {
                             chaveAlvo = rawLocal;
@@ -927,6 +929,85 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('Erro ao remover registro de pré-treino:', error);
         return res.status(500).json({ error: 'Erro interno' });
+    }
+});
+
+// ==========================================
+// ROTAS DE WHATSAPP (PREPARAÇÃO DE LOTE WA.ME)
+// ==========================================
+
+app.get('/api/whatsapp', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query('SELECT schedules FROM user_whatsapp_schedules WHERE user_id = $1', [userId]);
+        if (result.rows.length > 0) {
+            return res.json(result.rows[0].schedules);
+        }
+        return res.json([]);
+    } catch (e) {
+        return res.json([]);
+    }
+});
+
+app.post('/api/whatsapp', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const schedules = req.body;
+        
+        await pool.query(
+            `INSERT INTO user_whatsapp_schedules (user_id, schedules) VALUES ($1, $2)
+             ON CONFLICT (user_id) DO UPDATE SET schedules = $2`,
+            [userId, JSON.stringify(schedules)]
+        );
+
+        return res.json({ success: true, message: 'Agendamentos salvos com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao salvar agendamentos:', error);
+        return res.status(500).json({ error: 'Erro ao salvar programações.' });
+    }
+});
+
+app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { text, sendToAll, customerIds } = req.body;
+
+        let query = 'SELECT name, phone, cashback FROM customers WHERE user_id = $1 AND phone IS NOT NULL AND phone != \'\'';
+        let params = [userId];
+
+        if (!sendToAll && Array.isArray(customerIds) && customerIds.length > 0) {
+            query += ' AND id = ANY($2)';
+            params.push(customerIds);
+        }
+
+        const customersRes = await pool.query(query, params);
+        const customers = customersRes.rows;
+
+        if (customers.length === 0) {
+            return res.status(400).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
+        }
+
+        const messagesList = customers.map(c => {
+            let message = (text || '')
+                .replace(/{nome}/g, c.name || 'Cliente')
+                .replace(/{saldo}/g, `R$ ${Number(c.cashback || 0).toFixed(2)}`);
+
+            let phoneClean = c.phone.replace(/\D/g, '');
+            if (!phoneClean.startsWith('55')) {
+                phoneClean = '55' + phoneClean;
+            }
+
+            return {
+                phone: phoneClean,
+                name: c.name,
+                whatsappUrl: `https://wa.me/${phoneClean}?text=${encodeURIComponent(message)}`
+            };
+        });
+
+        return res.json({ success: true, targets: messagesList });
+    } catch (error) {
+        console.error('Erro ao preparar lote do WhatsApp:', error);
+        return res.status(500).json({ error: 'Erro ao preparar lote.' });
     }
 });
 

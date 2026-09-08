@@ -151,6 +151,11 @@ export async function initDb() {
       horario VARCHAR(50),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS user_whatsapp_schedules (
+      user_id VARCHAR(255) PRIMARY KEY,
+      schedules JSONB DEFAULT '[]'
+    );
   `);
   console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
 }

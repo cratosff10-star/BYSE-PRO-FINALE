@@ -40,11 +40,10 @@ export function PDV({
   const [salesChannel, setSalesChannel] = useState("Loja física");
   const [deliveryType, setDeliveryType] = useState("Retirada");
 
-  // Fallback inteligente para garantir que a lista de locais de estoque nunca fique vazia
   const availableStockLocations = stockLocations && stockLocations.length > 0 
     ? stockLocations 
     : [
-        { id: 'loja-principal', name: 'Loja Principal' },
+        { id: 'loja-fisica', name: 'Loja Física' },
         { id: 'degustacao', name: 'Degustação' }
       ];
 

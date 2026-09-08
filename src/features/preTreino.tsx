@@ -158,8 +158,13 @@ export function PreTreino({
       });
       setClientes(atualizados);
       
+      // Atualiza também o estado do modal para refletir instantaneamente
       if (clienteSelecionadoDetalhes && clienteSelecionadoDetalhes.id === clienteId) {
-        setClienteSelecionadoDetalhes({ ...clienteSelecionadoDetalhes, statusMensalidade: novoStatus, status_mensalidade: novoStatus });
+        setClienteSelecionadoDetalhes({ 
+          ...clienteSelecionadoDetalhes, 
+          statusMensalidade: novoStatus, 
+          status_mensalidade: novoStatus 
+        });
       }
     } catch (error) {
       console.error("Erro ao persistir a atualização de status:", error);
