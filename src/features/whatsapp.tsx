@@ -68,6 +68,7 @@ function WhatsApp({
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [qrCodeUrl, setQrCodeUrl] = useState(null);
   const [loadingQr, setLoadingQr] = useState(false);
+  const [resettingSession, setResettingSession] = useState(false);
 
   useEffect(() => {
     if (customers && customers.length > 0) {
@@ -89,7 +90,6 @@ function WhatsApp({
         const data = await res.json();
         setConnectionStatus(data.status);
         if (data.qr) {
-          // O backend agora envia o Data URL gerado pela biblioteca qrcode (Base64)
           setQrCodeUrl(data.qr);
         } else if (data.status === "connected") {
           setQrCodeUrl(null);
@@ -165,6 +165,42 @@ function WhatsApp({
       alert("Erro ao buscar o QR Code do servidor.");
     } finally {
       setLoadingQr(false);
+    }
+  };
+
+  const handleResetSession = async () => {
+    if (!window.confirm("Deseja realmente reiniciar a sessão do WhatsApp? Se houver outra conta conectada, ela será desconectada e um novo QR Code será gerado.")) {
+      return;
+    }
+
+    setResettingSession(true);
+    try {
+      const token = localStorage.getItem("byse_token");
+      const user = JSON.parse(localStorage.getItem("byse_user") || "{}");
+      const headers = { 
+        "Authorization": `Bearer ${token}`, 
+        "x-user-id": user.id || "user_1" 
+      };
+
+      const res = await fetch(`${API_URL}/api/whatsapp/reset`, {
+        method: "POST",
+        headers
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("Sessão reiniciada com sucesso! Aguarde alguns instantes para escanear o novo QR Code.");
+        setConnectionStatus("disconnected");
+        setQrCodeUrl(null);
+        await fetchQrCode();
+      } else {
+        alert(data.error || "Erro ao reiniciar sessão.");
+      }
+    } catch (err) {
+      console.error("Erro ao reiniciar sessão:", err);
+      alert("Erro de conexão ao reiniciar a sessão do WhatsApp.");
+    } finally {
+      setResettingSession(false);
     }
   };
 
@@ -383,8 +419,18 @@ function WhatsApp({
         </p>
 
         {connectionStatus === "connected" ? (
-          <div style={{ color: SUCCESS, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <CheckCircle2 size={16} /> WhatsApp conectado e pronto para disparos em massa!
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <div style={{ color: SUCCESS, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <CheckCircle2 size={16} /> WhatsApp conectado e pronto para disparos em massa!
+            </div>
+            <button
+              onClick={handleResetSession}
+              disabled={resettingSession}
+              style={{ background: "transparent", border: `1px solid ${accent}`, color: accent, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 11.5, display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <RefreshCw size={13} className={resettingSession ? "animate-spin" : ""} />
+              {resettingSession ? "Reiniciando..." : "Desconectar / Ler Outro QR Code"}
+            </button>
           </div>
         ) : qrCodeUrl ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
@@ -396,21 +442,39 @@ function WhatsApp({
               />
             </div>
             <p style={{ fontSize: 11.5, color: subtext }}>Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e escaneie o código acima.</p>
-            <button
-              onClick={fetchQrCode}
-              style={{ background: "transparent", border: `1px solid ${border}`, color: text, borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
-            >
-              Atualizar QR Code
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={fetchQrCode}
+                style={{ background: "transparent", border: `1px solid ${border}`, color: text, borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+              >
+                Atualizar QR Code
+              </button>
+              <button
+                onClick={handleResetSession}
+                disabled={resettingSession}
+                style={{ background: "transparent", border: `1px solid ${accent}`, color: accent, borderRadius: 6, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+              >
+                {resettingSession ? "Reiniciando..." : "Forçar Novo QR Code"}
+              </button>
+            </div>
           </div>
         ) : (
-          <button
-            onClick={fetchQrCode}
-            disabled={loadingQr}
-            style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
-          >
-            {loadingQr ? "Gerando QR Code..." : "Gerar QR Code na Tela"}
-          </button>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <button
+              onClick={fetchQrCode}
+              disabled={loadingQr}
+              style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+            >
+              {loadingQr ? "Gerando QR Code..." : "Gerar QR Code na Tela"}
+            </button>
+            <button
+              onClick={handleResetSession}
+              disabled={resettingSession}
+              style={{ background: "transparent", border: `1px solid ${border}`, color: text, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+            >
+              {resettingSession ? "Reiniciando..." : "Reiniciar Sessão"}
+            </button>
+          </div>
         )}
       </div>
 

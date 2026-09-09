@@ -9,6 +9,8 @@ import 'dotenv/config';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import QRCode from 'qrcode';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 
@@ -26,16 +28,22 @@ if (typeof initDb === 'function') {
 const activeSessions = {}; // Estrutura: { [userId]: { sock, status, qr } }
 
 async function getOrCreateWhatsAppSession(userId) {
+    console.log(`\n========================================`);
+    console.log(`[WHATSAPP SESSION] Requisitando sessão para o User ID: ${userId}`);
+
     if (activeSessions[userId]?.sock) {
+        console.log(`[WHATSAPP SESSION] Sessão em memória já existe para o usuário: ${userId}`);
         return activeSessions[userId];
     }
 
     const sessionPath = `auth_info_baileys_${userId}`;
+    console.log(`[WHATSAPP SESSION] Carregando pasta de autenticação no disco: ${sessionPath}`);
+
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false, // Desativado para não poluir o terminal
+        printQRInTerminal: false,
     });
 
     activeSessions[userId] = {
@@ -55,9 +63,9 @@ async function getOrCreateWhatsAppSession(userId) {
                     margin: 2,
                     scale: 6
                 });
-                console.log(`--- NOVO QR CODE GERADO PARA O USUÁRIO: ${userId} ---`);
+                console.log(`[WHATSAPP QR] 📷 Novo QR Code gerado e convertido para Base64 para o usuário: ${userId}`);
             } catch (err) {
-                console.error(`Erro ao converter QR Code para Base64 (User ${userId}):`, err);
+                console.error(`[WHATSAPP QR ERROR] Erro ao converter QR Code para Base64 (User ${userId}):`, err);
             }
         }
 
@@ -65,7 +73,7 @@ async function getOrCreateWhatsAppSession(userId) {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             activeSessions[userId].status = 'disconnected';
             activeSessions[userId].qr = null;
-            console.log(`Conexão fechada para o usuário ${userId}. Reconectando:`, shouldReconnect);
+            console.log(`[WHATSAPP CONNECTION] Conexão fechada para o usuário ${userId}. Deve reconectar?`, shouldReconnect);
             if (shouldReconnect) {
                 delete activeSessions[userId];
                 getOrCreateWhatsAppSession(userId);
@@ -73,7 +81,7 @@ async function getOrCreateWhatsAppSession(userId) {
         } else if (connection === 'open') {
             activeSessions[userId].status = 'connected';
             activeSessions[userId].qr = null;
-            console.log(`✅ WhatsApp conectado com sucesso para o usuário ${userId}!`);
+            console.log(`[WHATSAPP CONNECTION] ✅ WhatsApp conectado com SUCESSO para o usuário isolado: ${userId}!`);
         }
     });
 
@@ -85,6 +93,7 @@ async function getOrCreateWhatsAppSession(userId) {
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
+        console.log(`[LOGIN] Tentativa de login para o e-mail: ${email}`);
         
         let result = await pool.query(
             'SELECT id, name, email, password FROM users WHERE email = $1',
@@ -113,21 +122,24 @@ app.post('/api/login', async (req, res) => {
         const senhaValida = await bcrypt.compare(password, user.password);
 
         if (!senhaValida) {
+            console.warn(`[LOGIN WARNING] Senha inválida para o e-mail: ${email}`);
             return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
         }
 
+        console.log(`[LOGIN SUCCESS] Usuário autenticado com ID: ${user.id} (${user.email})`);
         return res.status(200).json({
             token: 'jwt_token_' + user.id,
             user: { id: user.id, name: user.name, email: user.email }
         });
     } catch (error) {
-        console.error('Erro no login:', error);
+        console.error('[LOGIN ERROR] Erro interno no login:', error);
         return res.status(500).json({ error: 'Erro interno no servidor.' });
     }
 });
 
 const authMiddleware = (req, res, next) => {
     let finalUserId = null;
+    
     if (req.headers.authorization) {
         const parts = req.headers.authorization.replace('Bearer ', '').split('_');
         if (parts.length > 1) {
@@ -140,9 +152,11 @@ const authMiddleware = (req, res, next) => {
     }
 
     if (!finalUserId) {
+        console.warn(`[AUTH SECURITY] Requisição bloqueada na rota ${req.method} ${req.originalUrl}: Usuário não autenticado ou ID ausente.`);
         return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
 
+    console.log(`[AUTH SECURITY] Request autorizado | Rota: ${req.method} ${req.originalUrl} | User ID identificado: ${finalUserId}`);
     req.user = { id: finalUserId };
     next();
 };
@@ -1007,27 +1021,64 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
 // ROTAS DE WHATSAPP & INTEGRAÇÃO BAILEYS ISOLADAS POR USER_ID
 // ==========================================
 
-// Rota para checar status e QR Code do usuário autenticado
 app.get('/api/whatsapp/status', authMiddleware, async (req, res) => {
     const userId = req.user.id;
+    console.log(`[WHATSAPP ROUTE] GET /api/whatsapp/status chamado para o User ID: ${userId}`);
     const session = await getOrCreateWhatsAppSession(userId);
     return res.json({ status: session.status, qr: session.qr });
 });
 
-// Rota dedicada para o front-end solicitar explicitamente o QR Code do usuário
 app.get('/api/whatsapp/qr', authMiddleware, async (req, res) => {
     const userId = req.user.id;
+    console.log(`[WHATSAPP ROUTE] GET /api/whatsapp/qr chamado para o User ID: ${userId}`);
     const session = await getOrCreateWhatsAppSession(userId);
 
     if (session.status === 'connected') {
+        console.log(`[WHATSAPP QR] Tentativa de gerar QR para o usuário ${userId}, mas o WhatsApp já está conectado.`);
         return res.status(400).json({ error: 'WhatsApp já está conectado para este usuário!' });
     }
     if (!session.qr) {
-        console.log(`Tentativa de buscar QR code para o usuário ${userId}, mas session.qr está nulo.`);
+        console.log(`[WHATSAPP QR] session.qr está nulo para o usuário ${userId}.`);
         return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
-    console.log(`Enviando QR Code Base64 para o front-end do usuário ${userId} com sucesso.`);
+    console.log(`[WHATSAPP QR] Enviando QR Code Base64 para o front-end do usuário ${userId}.`);
     return res.json({ success: true, qr: session.qr });
+});
+
+// ROTA DE RESET / FORÇAR NOVO QR CODE
+app.post('/api/whatsapp/reset', authMiddleware, async (req, res) => {
+    const userId = req.user.id;
+    console.log(`[WHATSAPP ROUTE] POST /api/whatsapp/reset chamado para o User ID: ${userId}`);
+
+    try {
+        // 1. Desconectar o socket atual se existir
+        if (activeSessions[userId]?.sock) {
+            try {
+                await activeSessions[userId].sock.logout();
+            } catch (e) {
+                // Ignorar erro caso já esteja desconectado
+            }
+            try {
+                activeSessions[userId].sock.end(undefined);
+            } catch (e) {}
+        }
+        delete activeSessions[userId];
+
+        // 2. Deletar a pasta de credenciais em disco do usuário
+        const sessionPath = `auth_info_baileys_${userId}`;
+        if (fs.existsSync(sessionPath)) {
+            fs.rmSync(sessionPath, { recursive: true, force: true });
+            console.log(`[WHATSAPP RESET] Pasta de sessão ${sessionPath} removida com sucesso.`);
+        }
+
+        // 3. Inicializar uma nova sessão imediatamente para gerar novo QR Code
+        const newSession = await getOrCreateWhatsAppSession(userId);
+
+        return res.json({ success: true, message: 'Sessão reiniciada com sucesso. Aguarde o novo QR Code.' });
+    } catch (error) {
+        console.error('[WHATSAPP RESET ERROR] Erro ao resetar sessão:', error);
+        return res.status(500).json({ error: 'Erro ao reiniciar sessão do WhatsApp.' });
+    }
 });
 
 app.get('/api/whatsapp', authMiddleware, async (req, res) => {
@@ -1061,13 +1112,15 @@ app.post('/api/whatsapp', authMiddleware, async (req, res) => {
     }
 });
 
-// Rota para disparar mensagens em massa utilizando a sessão específica do usuário
 app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
+        console.log(`[WHATSAPP BATCH] Iniciando disparo em lote para o User ID: ${userId}`);
+        
         const session = await getOrCreateWhatsAppSession(userId);
 
         if (session.status !== 'connected' || !session.sock) {
+            console.warn(`[WHATSAPP BATCH WARNING] Tentativa de disparo sem conexão ativa para o User ID: ${userId}`);
             return res.status(400).json({ error: 'WhatsApp não está conectado no backend. Escaneie o QR Code na tela primeiro.' });
         }
 
@@ -1103,13 +1156,13 @@ app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
             try {
                 await session.sock.sendMessage(jid, { text: message });
                 sentCount++;
-                // Pequeno delay para evitar bloqueio por spam
                 await new Promise(resolve => setTimeout(resolve, 2000));
             } catch (err) {
-                console.error(`Falha ao enviar mensagem para ${phoneClean}:`, err);
+                console.error(`[WHATSAPP BATCH ERROR] Falha ao enviar mensagem para ${phoneClean} (User ${userId}):`, err);
             }
         }
 
+        console.log(`[WHATSAPP BATCH SUCCESS] ${sentCount} mensagens enviadas para o usuário ${userId}.`);
         return res.json({ success: true, message: `${sentCount} mensagens enviadas com sucesso via Baileys!` });
     } catch (error) {
         console.error('Erro ao enviar lote pelo Baileys:', error);
@@ -1117,7 +1170,6 @@ app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
     }
 });
 
-// Rota de fallback para wa.me caso queira usar via frontend
 app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -1135,7 +1187,7 @@ app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
         const customers = customersRes.rows;
 
         if (customers.length === 0) {
-            return res.status(0).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
+            return res.status(400).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
         }
 
         const messagesList = customers.map(c => {
