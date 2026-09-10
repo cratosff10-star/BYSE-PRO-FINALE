@@ -163,6 +163,8 @@ function Clientes({
 
     if (targetCust) {
       try {
+        const existingExpiry = targetCust.cashbackExpirationDate || targetCust.cashback_expiration_date || targetCust.cashbackExpiry || targetCust.cashback_expiry || null;
+        
         await fetch(`${API_URL}/api/clientes`, {
           method: "POST",
           headers: { 
@@ -172,7 +174,11 @@ function Clientes({
           },
           body: JSON.stringify({
             ...targetCust,
-            cashback: newCb
+            cashback: newCb,
+            cashbackExpirationDate: existingExpiry,
+            cashback_expiration_date: existingExpiry,
+            cashbackExpiry: existingExpiry,
+            cashback_expiry: existingExpiry
           })
         });
       } catch (e) {

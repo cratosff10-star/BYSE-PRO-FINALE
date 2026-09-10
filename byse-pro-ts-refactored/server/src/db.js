@@ -17,19 +17,40 @@ export async function initDb() {
       password VARCHAR(255) NOT NULL,
       whatsapp_api_url TEXT,
       whatsapp_api_key TEXT,
+      cashback_percentage NUMERIC DEFAULT 3,
+      cashback_validity_days INT DEFAULT 30,
+      cashback_message TEXT DEFAULT 'Oi {nome}, você tem {saldo} em cashback te esperando na nossa loja! Aproveite antes de vencer em {vencimento}. 🎁',
+      reminder_days_1 INT DEFAULT 1,
+      reminder_days_2 INT DEFAULT 7,
+      reminder_days_3 INT DEFAULT 15,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    
     ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_api_url TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_api_key TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_percentage NUMERIC DEFAULT 3;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_validity_days INT DEFAULT 30;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_message TEXT DEFAULT 'Oi {nome}, você tem {saldo} em cashback te esperando na nossa loja! Aproveite antes de vencer em {vencimento}. 🎁';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_days_1 INT DEFAULT 1;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_days_2 INT DEFAULT 7;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_days_3 INT DEFAULT 15;
+
+    CREATE TABLE IF NOT EXISTS user_pdv_configs (
+      user_id VARCHAR(255) PRIMARY KEY,
+      pdv_config JSONB DEFAULT '{}'
+    );
 
     CREATE TABLE IF NOT EXISTS customers (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL,
       cpf VARCHAR(50),
       data_aniversario DATE,
       cashback NUMERIC DEFAULT 0,
+      cashback_expiration_date DATE,
+      cashback_expiry DATE,
+      cashback_lost NUMERIC DEFAULT 0,
       status VARCHAR(100) DEFAULT 'Ativo',
       whatsapp_opt_in INT DEFAULT 0,
       reminders_enabled INT DEFAULT 1,
@@ -39,12 +60,16 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_aniversario DATE;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback NUMERIC DEFAULT 0;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback_expiration_date DATE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback_expiry DATE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback_lost NUMERIC DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       category VARCHAR(255),
       barcode VARCHAR(255),
@@ -62,31 +87,21 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS vip_price_3x NUMERIC;
 
     CREATE TABLE IF NOT EXISTS stock_locations (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS whatsapp_schedules (
-      id SERIAL PRIMARY KEY,
-      user_id VARCHAR(255),
-      schedule_index INT,
-      days_of_week TEXT[],
-      send_time TIME NOT NULL,
-      message_template TEXT,
-      send_to_all BOOLEAN DEFAULT TRUE,
-      customer_ids TEXT[],
-      enabled BOOLEAN DEFAULT FALSE,
-      CONSTRAINT unique_user_schedule UNIQUE (user_id, schedule_index)
-    );
+    ALTER TABLE stock_locations ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
 
     CREATE TABLE IF NOT EXISTS sales (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       customer_id VARCHAR(255),
       customer_name VARCHAR(255),
       seller VARCHAR(255),
@@ -94,6 +109,8 @@ export async function initDb() {
       discount NUMERIC DEFAULT 0,
       subtotal NUMERIC DEFAULT 0,
       total NUMERIC DEFAULT 0,
+      cashback_earned NUMERIC DEFAULT 0,
+      earned_cashback NUMERIC DEFAULT 0,
       gender VARCHAR(50),
       sales_channel VARCHAR(100),
       delivery_type VARCHAR(100),
@@ -101,19 +118,24 @@ export async function initDb() {
       date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashback_earned NUMERIC DEFAULT 0;
+    ALTER TABLE sales ADD COLUMN IF NOT EXISTS earned_cashback NUMERIC DEFAULT 0;
+
     CREATE TABLE IF NOT EXISTS sellers (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       commission_pct NUMERIC DEFAULT 5,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     
+    ALTER TABLE sellers ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
     ALTER TABLE sellers ADD COLUMN IF NOT EXISTS commission_pct NUMERIC DEFAULT 5;
 
     CREATE TABLE IF NOT EXISTS fiados (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       customer_id VARCHAR(255),
       customer_name VARCHAR(255),
       products TEXT,
@@ -122,26 +144,21 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS pre_treino (
-      id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
-      title VARCHAR(255) NOT NULL,
-      description TEXT,
-      exercises JSONB DEFAULT '[]',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
 
     CREATE TABLE IF NOT EXISTS pre_treino_produtos (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       cost NUMERIC DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE pre_treino_produtos ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
+
     CREATE TABLE IF NOT EXISTS pre_treino_registros (
       id VARCHAR(255) PRIMARY KEY,
-      user_id VARCHAR(255),
+      user_id VARCHAR(255) NOT NULL,
       customer_id VARCHAR(255),
       nome_cliente VARCHAR(255),
       produto_id VARCHAR(255),
@@ -152,22 +169,13 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
+
     CREATE TABLE IF NOT EXISTS user_whatsapp_schedules (
       user_id VARCHAR(255) PRIMARY KEY,
       schedules JSONB DEFAULT '[]'
     );
   `);
 
-  // Migração automática: Converte chaves antigas de estoque para "Loja Física" mantendo a quantidade
-  await pool.query(`
-    UPDATE products 
-    SET stocks = jsonb_set(
-        stocks::jsonb - 'Estoque Principal' - 'Loja Principal',
-        '{Loja Física}',
-        COALESCE(stocks->'Estoque Principal', stocks->'Loja Principal', '0'::jsonb)
-    )
-    WHERE stocks ? 'Estoque Principal' OR stocks ? 'Loja Principal';
-  `).catch(err => console.log('Aviso na migração de estoques:', err.message));
-
-  console.log('✅ Banco de dados PostgreSQL inicializado e atualizado com sucesso!');
+  console.log('✅ Banco de dados PostgreSQL inicializado e isolado por usuário com sucesso!');
 }

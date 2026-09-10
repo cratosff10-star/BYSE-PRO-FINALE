@@ -48,7 +48,9 @@ import {
   Mail,
   Wallet,
   Banknote,
-  Save
+  Save,
+  Filter,
+  Calendar
 } from "lucide-react";
 
 import {
@@ -125,22 +127,23 @@ import type {
 
 /**
  * Função utilitária para adicionar o cashback acumulado a um cliente quando uma compra é realizada.
- * @param customers - Lista atual de clientes
- * @param setCustomers - Função setState para atualizar os clientes
- * @param customerId - ID do cliente que realizou a compra
- * @param saleTotal - Valor total da compra
- * @param cashbackPct - Porcentagem atual de cashback configurada
  */
-export const applyCashback = (customers, setCustomers, customerId, saleTotal, cashbackPct) => {
+export const applyCashback = (customers, setCustomers, customerId, saleTotal, cashbackPct, validityDays) => {
   if (!customerId || !saleTotal || saleTotal <= 0) return;
   const earned = (saleTotal * (cashbackPct || 0)) / 100;
+  
+  const expDate = new Date();
+  expDate.setDate(expDate.getDate() + (validityDays || 30));
+  const expDateStr = expDate.toISOString().split('T')[0];
 
   setCustomers(
     customers.map((c) =>
       c.id === customerId
         ? {
             ...c,
-            cashback: (Number(c.cashback) || 0) + earned
+            cashback: (Number(c.cashback) || 0) + earned,
+            cashbackExpirationDate: expDateStr,
+            cashback_expiration_date: expDateStr
           }
         : c
     )
@@ -162,6 +165,44 @@ function Cashback({
 }) {
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
+  
+  const [cashbackMessage, setCashbackMessage] = useState(
+    'Oi {nome}, você tem {saldo} em cashback te esperando na nossa loja! Aproveite antes de vencer em {vencimento}. 🎁'
+  );
+  const [validityFilterDays, setValidityFilterDays] = useState("30");
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/cashback-config', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.cashbackValidityDays) setCashbackValidityDays(data.cashbackValidityDays);
+        if (data.cashbackMessage) setCashbackMessage(data.cashbackMessage);
+      })
+      .catch(err => console.error("Erro ao carregar config de cashback", err));
+  }, []);
+
+  const saveConfigToBackend = async () => {
+    setIsSavingConfig(true);
+    try {
+      await fetch('/api/cashback-config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('token')
+        },
+        body: JSON.stringify({ cashbackValidityDays, cashbackMessage })
+      });
+      alert('Configurações de cashback e mensagem salvas com sucesso!');
+    } catch (err) {
+      console.error('Erro ao salvar configurações', err);
+      alert('Erro ao salvar configurações.');
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
 
   const startEdit = (c) => {
     setEditingId(c.id);
@@ -182,20 +223,77 @@ function Cashback({
     setEditingId(null);
   };
 
+  const getRemainingDays = (c) => {
+    const expDateRaw = c.cashbackExpirationDate || c.cashback_expiration_date || c.cashbackExpiry || c.cashback_expiry;
+    if (!expDateRaw) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expDate = new Date(expDateRaw);
+    expDate.setHours(0, 0, 0, 0);
+    const diffTime = expDate.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  const filteredCustomers = useMemo(() => {
+    const filterDaysNum = parseInt(validityFilterDays);
+    if (isNaN(filterDaysNum) || filterDaysNum <= 0) {
+      return customers.filter(c => Number(c.cashback) > 0);
+    }
+
+    return customers.filter(c => {
+      const cashbackVal = Number(c.cashback) || 0;
+      if (cashbackVal <= 0) return false;
+
+      // Se o filtro for 365 dias ("Todos com saldo ativo"), exibe todos que possuem cashback > 0
+      if (filterDaysNum >= 365) {
+        return true;
+      }
+
+      const diffDays = getRemainingDays(c);
+      if (diffDays === null) return false;
+      return diffDays >= 0 && diffDays <= filterDaysNum;
+    });
+  }, [customers, validityFilterDays]);
+
+  const getRenderedMessage = (c) => {
+    const vencimentoFormatado = (c.cashbackExpirationDate || c.cashback_expiration_date || c.cashbackExpiry || c.cashback_expiry) 
+      ? new Date(c.cashbackExpirationDate || c.cashback_expiration_date || c.cashbackExpiry || c.cashback_expiry).toLocaleDateString('pt-BR') 
+      : 'breve';
+
+    return cashbackMessage
+      .replace(/{nome}/g, c.name || 'Cliente')
+      .replace(/{saldo}/g, money(c.cashback || 0))
+      .replace(/{vencimento}/g, vencimentoFormatado);
+  };
+
+  const handleSendWhatsAppMessage = (c) => {
+    if (!c.phone) {
+      alert("Este cliente não possui telefone cadastrado.");
+      return;
+    }
+    const telefoneLimpo = c.phone.replace(/\D/g, '');
+    if (telefoneLimpo.length < 10) {
+      alert("Número de telefone inválido.");
+      return;
+    }
+    const mensagemPronta = getRenderedMessage(c);
+    window.open(`https://wa.me/55${telefoneLimpo}?text=${encodeURIComponent(mensagemPronta)}`, '_blank');
+  };
+
   return (
     <div>
       <SectionTitle
-        title="Cashback"
-        sub="Programa de fidelização por porcentagem de compra"
+        title="Gestão de Cashback e Fidelidade"
+        sub="Controle percentual, validade de saldos e mensagens personalizadas de resgate"
         subtext={subtext}
       />
 
       <div
         style={{
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 16
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: 16,
+          marginBottom: 24
         }}
       >
         <div
@@ -203,56 +301,36 @@ function Cashback({
             background: card,
             border: `1px solid ${border}`,
             borderRadius: 12,
-            padding: 18,
-            flex: 1,
-            minWidth: 220
+            padding: 18
           }}
         >
-          <label
-            style={{
-              fontSize: 13,
-              color: subtext
-            }}
-          >
-            Porcentagem de cashback por compra
-          </label>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: text, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Percent size={16} color={accent} /> Regras de Acúmulo
+          </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginTop: 8
-            }}
-          >
+          <label style={{ fontSize: 12, color: subtext }}>Porcentagem de cashback por compra</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, marginBottom: 14 }}>
             <input
               type="range"
               min="0"
               max="15"
               step="0.5"
               value={cashbackPct}
-              onChange={(e) =>
-                setCashbackPct(
-                  parseFloat(e.target.value)
-                )
-              }
-              style={{
-                flex: 1,
-                accentColor: accent
-              }}
+              onChange={(e) => setCashbackPct(parseFloat(e.target.value))}
+              style={{ flex: 1, accentColor: accent }}
             />
-
-            <div
-              style={{
-                fontFamily: FONT_DISPLAY,
-                fontSize: 22,
-                color: accent,
-                minWidth: 50
-              }}
-            >
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 20, color: accent, minWidth: 45 }}>
               {cashbackPct}%
             </div>
           </div>
+
+          <label style={{ fontSize: 12, color: subtext }}>Validade padrão (dias após o ganho)</label>
+          <input
+            type="number"
+            value={cashbackValidityDays}
+            onChange={(e) => setCashbackValidityDays(parseInt(e.target.value) || 0)}
+            style={{ ...inputStyle(border, text), width: "100%", marginTop: 6 }}
+          />
         </div>
 
         <div
@@ -261,42 +339,96 @@ function Cashback({
             border: `1px solid ${border}`,
             borderRadius: 12,
             padding: 18,
-            flex: 1,
-            minWidth: 220
+            display: "flex",
+            flexDirection: "column"
           }}
         >
-          <label
-            style={{
-              fontSize: 13,
-              color: subtext
-            }}
-          >
-            Validade do cashback (dias após ganho)
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: text, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <MessageCircle size={16} color={accent} /> Edição da Mensagem de WhatsApp
+          </div>
+          <label style={{ fontSize: 11, color: subtext, marginBottom: 6 }}>
+            Variáveis disponíveis: <code style={{ color: accent }}>{'{nome}'}</code>, <code style={{ color: accent }}>{'{saldo}'}</code>, <code style={{ color: accent }}>{'{vencimento}'}</code>
           </label>
-
-          <input
-            type="number"
-            value={cashbackValidityDays}
-            onChange={(e) =>
-              setCashbackValidityDays(
-                parseInt(e.target.value) || 0
-              )
-            }
+          <textarea
+            value={cashbackMessage}
+            onChange={(e) => setCashbackMessage(e.target.value)}
+            rows={3}
             style={{
               ...inputStyle(border, text),
               width: "100%",
-              marginTop: 8
+              resize: "vertical",
+              fontSize: 12,
+              fontFamily: FONT_BODY
             }}
           />
-
-          <div
+          <button
+            onClick={saveConfigToBackend}
+            disabled={isSavingConfig}
             style={{
-              fontSize: 11,
-              color: subtext,
-              marginTop: 6
+              marginTop: 10,
+              background: accent,
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              alignSelf: "flex-end"
             }}
           >
-            Os lembretes de saldo são enviados pela aba WhatsApp, nos dias configurados lá.
+            <Save size={14} /> {isSavingConfig ? 'Salvando...' : 'Salvar Configurações'}
+          </button>
+        </div>
+      </div>
+
+      <div
+        style={{
+          background: card,
+          border: `1px solid ${border}`,
+          borderRadius: 12,
+          padding: "14px 18px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Filter size={18} color={accent} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: text }}>Filtrar Vencimento de Cashback</div>
+            <div style={{ fontSize: 11, color: subtext }}>Selecione o prazo limite para localizar clientes prestes a perder o saldo</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <select
+            value={validityFilterDays}
+            onChange={(e) => setValidityFilterDays(e.target.value)}
+            style={{
+              ...inputStyle(border, text),
+              backgroundColor: card,
+              color: text,
+              padding: "8px 12px",
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            <option value="15" style={{ backgroundColor: card, color: text }}>A 15 dias de perder</option>
+            <option value="30" style={{ backgroundColor: card, color: text }}>A 30 dias de perder</option>
+            <option value="60" style={{ backgroundColor: card, color: text }}>A 60 dias de perder</option>
+            <option value="90" style={{ backgroundColor: card, color: text }}>A 90 dias de perder</option>
+            <option value="365" style={{ backgroundColor: card, color: text }}>Todos com saldo ativo</option>
+          </select>
+          <div style={{ fontSize: 12, fontWeight: 600, color: accent, background: hexAlpha(accent, 0.1), padding: "6px 12px", borderRadius: 8 }}>
+            {filteredCustomers.length} cliente(s) encontrado(s)
           </div>
         </div>
       </div>
@@ -312,8 +444,8 @@ function Cashback({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "2fr 1fr 1fr",
-            padding: "10px 14px",
+            gridTemplateColumns: "1.8fr 1fr 1.2fr 2fr 1fr",
+            padding: "12px 14px",
             fontSize: 11,
             color: subtext,
             fontWeight: 700,
@@ -321,108 +453,127 @@ function Cashback({
             textTransform: "uppercase"
           }}
         >
-          <div>Cliente</div>
-          <div>Saldo cashback</div>
-          <div>Lembrete WhatsApp</div>
+          <div>Cliente / Telefone</div>
+          <div>Saldo Cashback</div>
+          <div>Validade (Dias)</div>
+          <div>Prévia da Mensagem</div>
+          <div style={{ textAlign: "right" }}>Ação WhatsApp</div>
         </div>
 
-        {customers.map((c, i) => (
-          <div
-            key={c.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "2fr 1fr 1fr",
-              padding: "12px 14px",
-              fontSize: 13,
-              alignItems: "center",
-              borderBottom:
-                i < customers.length - 1
-                  ? `1px solid ${border}`
-                  : "none"
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 600
-              }}
-            >
-              {c.name}
-            </div>
-
-            {editingId === c.id ? (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                  alignItems: "center"
-                }}
-              >
-                <input
-                  value={editValue}
-                  onChange={(e) =>
-                    setEditValue(e.target.value)
-                  }
-                  type="number"
-                  style={{
-                    ...inputStyle(border, text),
-                    width: 80
-                  }}
-                />
-
-                <button
-                  onClick={() => saveEdit(c.id)}
-                  style={{
-                    background: accent,
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "4px 7px",
-                    cursor: "pointer"
-                  }}
-                >
-                  <Check size={12} color="#fff" />
-                </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                  alignItems: "center"
-                }}
-              >
-                <span
-                  style={{
-                    fontWeight: 800,
-                    color: accent
-                  }}
-                >
-                  {money(c.cashback)}
-                </span>
-
-                <button
-                  onClick={() => startEdit(c)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0
-                  }}
-                >
-                  <Edit2 size={12} color={subtext} />
-                </button>
-              </div>
-            )}
-
-            <div
-              style={{
-                color: subtext,
-                fontSize: 12
-              }}
-            >
-              "Oi {c.name.split(" ")[0]}, você tem {money(c.cashback)} em cashback te esperando! 🎁"
-            </div>
+        {filteredCustomers.length === 0 ? (
+          <div style={{ padding: 30, textAlign: "center", color: subtext, fontSize: 13 }}>
+            Nenhum cliente encontrado dentro do período de validade selecionado.
           </div>
-        ))}
+        ) : (
+          filteredCustomers.map((c, i) => {
+            const expDateRaw = c.cashbackExpirationDate || c.cashback_expiration_date || c.cashbackExpiry || c.cashback_expiry;
+            const expDateFormatted = expDateRaw 
+              ? new Date(expDateRaw).toLocaleDateString('pt-BR') 
+              : 'Sem data';
+            
+            const remainingDays = getRemainingDays(c);
+
+            return (
+              <div
+                key={c.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.8fr 1fr 1.2fr 2fr 1fr",
+                  padding: "12px 14px",
+                  fontSize: 13,
+                  alignItems: "center",
+                  borderBottom:
+                    i < filteredCustomers.length - 1
+                      ? `1px solid ${border}`
+                      : "none"
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, color: text }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: subtext }}>{c.phone || 'Sem telefone'}</div>
+                </div>
+
+                {editingId === c.id ? (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      type="number"
+                      style={{ ...inputStyle(border, text), width: 80 }}
+                    />
+                    <button
+                      onClick={() => saveEdit(c.id)}
+                      style={{
+                        background: accent,
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 8px",
+                        cursor: "pointer"
+                      }}
+                    >
+                      <Check size={12} color="#fff" />
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ fontWeight: 800, color: accent }}>
+                      {money(c.cashback)}
+                    </span>
+                    <button
+                      onClick={() => startEdit(c)}
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                      title="Editar saldo"
+                    >
+                      <Edit2 size={12} color={subtext} />
+                    </button>
+                  </div>
+                )}
+
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: remainingDays !== null && remainingDays <= 5 ? DANGER : text }}>
+                    {remainingDays !== null ? `${remainingDays} dia(s) restantes` : 'Sem prazo'}
+                  </div>
+                  <div style={{ fontSize: 10, color: subtext }}>Expira em: {expDateFormatted}</div>
+                </div>
+
+                <div
+                  style={{
+                    color: subtext,
+                    fontSize: 11,
+                    background: hexAlpha(border, 0.3),
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    fontStyle: "italic"
+                  }}
+                >
+                  "{getRenderedMessage(c)}"
+                </div>
+
+                <div style={{ textAlign: "right" }}>
+                  <button
+                    onClick={() => handleSendWhatsAppMessage(c)}
+                    style={{
+                      background: "#25D366",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6
+                    }}
+                    title="Disparar mensagem no WhatsApp"
+                  >
+                    <MessageCircle size={14} /> Enviar
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

@@ -90,6 +90,59 @@ async function getOrCreateWhatsAppSession(userId) {
     return activeSessions[userId];
 }
 
+// ==========================================
+// CRON JOB AUTOMÁTICO DE LEMBRETES DE CASHBACK
+// ==========================================
+cron.schedule('0 9 * * *', async () => {
+    console.log('[CRON] Executando verificação diária de lembretes de cashback...');
+    try {
+        const customersRes = await pool.query('SELECT * FROM customers WHERE cashback > 0 AND (cashback_expiry IS NOT NULL OR cashback_expiration_date IS NOT NULL)');
+        for (const customer of customersRes.rows) {
+            const userId = customer.user_id;
+            
+            // Buscar configuração do usuário
+            const configRes = await pool.query('SELECT pdv_config FROM user_pdv_configs WHERE user_id = $1', [userId]);
+            if (configRes.rows.length === 0) continue;
+            
+            const config = typeof configRes.rows[0].pdv_config === 'string' 
+                ? JSON.parse(configRes.rows[0].pdv_config) 
+                : configRes.rows[0].pdv_config;
+
+            if (!config.activeReminderButton) continue; // Só envia se o botão estiver ativo no PDV
+
+            const expiryRaw = customer.cashback_expiry || customer.cashback_expiration_date;
+            if (!expiryRaw) continue;
+
+            const expiryDate = new Date(expiryRaw);
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            expiryDate.setHours(0,0,0,0);
+
+            const diffTime = expiryDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            // Verificar se os dias restantes batem com os personalizados ou se há lembretes configurados
+            const triggerDays = [config.reminderDays1 || 1, config.reminderDays2 || 7, config.reminderDays3 || 15];
+            
+            if (triggerDays.includes(diffDays) && customer.phone) {
+                const session = await getOrCreateWhatsAppSession(userId);
+                if (session && session.status === 'connected') {
+                    const phoneClean = customer.phone.replace(/\D/g, '');
+                    const message = (config.cashbackMessage || 'Oi {nome}, seu saldo de {saldo} vence em {vencimento}!')
+                        .replace(/{nome}/g, customer.name || 'Cliente')
+                        .replace(/{saldo}/g, Number(customer.cashback).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
+                        .replace(/{vencimento}/g, expiryDate.toLocaleDateString('pt-BR'));
+
+                    await session.sock.sendMessage(`55${phoneClean}@s.whatsapp.net`, { text: message });
+                    console.log(`[CRON] Lembrete automático enviado para ${customer.name} (${phoneClean}) - Restam ${diffDays} dias.`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[CRON ERROR] Erro ao processar lembretes automáticos de cashback:', err);
+    }
+});
+
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -102,8 +155,7 @@ app.post('/api/login', async (req, res) => {
 
         let user;
         if (result.rows.length === 0) {
-            // CORREÇÃO SÊNIOR: Geração de ID dinâmico e estritamente único para novos cadastros
-            const newId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+            const newId = String(Date.now());
             const hashedPassword = await bcrypt.hash(password || '123456', 10);
             
             await pool.query(
@@ -210,7 +262,7 @@ app.get('/api/public/catalogo/:userId', async (req, res) => {
 const handleGetCustomers = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, phone, cpf, data_aniversario, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade FROM customers WHERE user_id = $1',
+            'SELECT id, name, phone, cpf, data_aniversario, cashback, cashback_expiry, cashback_expiration_date, cashback_lost, status, status_mensalidade, data_vencimento, valor_mensalidade FROM customers WHERE user_id = $1',
             [req.user.id]
         );
         
@@ -218,6 +270,12 @@ const handleGetCustomers = async (req, res) => {
             ...c,
             nome: c.name,
             telefone: c.phone,
+            cashbackExpirationDate: c.cashback_expiration_date || c.cashback_expiry,
+            cashback_expiration_date: c.cashback_expiration_date || c.cashback_expiry,
+            cashbackExpiry: c.cashback_expiry || c.cashback_expiration_date,
+            cashback_expiry: c.cashback_expiry || c.cashback_expiration_date,
+            cashbackLost: c.cashback_lost || 0,
+            cashback_lost: c.cashback_lost || 0,
             statusMensalidade: c.status_mensalidade,
             dataVencimento: c.data_vencimento,
             valorMensalidade: Number(c.valor_mensalidade || 0)
@@ -233,7 +291,7 @@ const handleGetCustomers = async (req, res) => {
 const handlePostCustomer = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { id, name, nome, phone, telefone, cpf, data_aniversario, birthDate, cashback, status, status_mensalidade, statusMensalidade, data_vencimento, dataVencimento, valor_mensalidade, valorMensalidade } = req.body;
+        const { id, name, nome, phone, telefone, cpf, data_aniversario, birthDate, cashback, cashback_expiry, cashbackExpiry, cashback_expiration_date, cashbackExpirationDate, cashback_lost, cashbackLost, status, status_mensalidade, statusMensalidade, data_vencimento, dataVencimento, valor_mensalidade, valorMensalidade } = req.body;
         
         const clienteId = id || 'c' + Date.now();
         const nomeFinal = name || nome || 'Cliente';
@@ -242,20 +300,25 @@ const handlePostCustomer = async (req, res) => {
         const vencimentoFinal = data_vencimento || dataVencimento || null;
         const valorMensalidadeFinal = parseFloat(valor_mensalidade || valorMensalidade || 0);
         const aniversarioFinal = data_aniversario || birthDate || null;
+        const expiryFinal = cashback_expiration_date || cashbackExpirationDate || cashback_expiry || cashbackExpiry || null;
+        const lostFinal = cashback_lost !== undefined ? cashback_lost : (cashbackLost !== undefined ? cashbackLost : 0);
         
         await pool.query(
-            `INSERT INTO customers (id, user_id, name, phone, cpf, data_aniversario, cashback, status, status_mensalidade, data_vencimento, valor_mensalidade) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            `INSERT INTO customers (id, user_id, name, phone, cpf, data_aniversario, cashback, cashback_expiration_date, cashback_expiry, cashback_lost, status, status_mensalidade, data_vencimento, valor_mensalidade) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              ON CONFLICT (id) DO UPDATE SET 
                 name = $3, 
                 phone = $4, 
                 cpf = COALESCE($5, customers.cpf),
                 data_aniversario = COALESCE($6, customers.data_aniversario),
                 cashback = COALESCE($7, customers.cashback),
-                status = COALESCE($8, customers.status),
-                status_mensalidade = COALESCE($9, customers.status_mensalidade), 
-                data_vencimento = COALESCE($10, customers.data_vencimento), 
-                valor_mensalidade = COALESCE($11, customers.valor_mensalidade)`,
+                cashback_expiration_date = COALESCE($8, customers.cashback_expiration_date),
+                cashback_expiry = COALESCE($9, customers.cashback_expiry),
+                cashback_lost = COALESCE($10, customers.cashback_lost),
+                status = COALESCE($11, customers.status),
+                status_mensalidade = COALESCE($12, customers.status_mensalidade), 
+                data_vencimento = COALESCE($13, customers.data_vencimento), 
+                valor_mensalidade = COALESCE($14, customers.valor_mensalidade)`,
             [
                 clienteId, 
                 userId, 
@@ -263,7 +326,10 @@ const handlePostCustomer = async (req, res) => {
                 telefoneFinal, 
                 cpf || '', 
                 aniversarioFinal,
-                cashback || 0, 
+                cashback || 0,
+                expiryFinal,
+                expiryFinal,
+                lostFinal, 
                 status || 'Ativo', 
                 statusMensalidadeFinal, 
                 vencimentoFinal, 
@@ -285,6 +351,12 @@ const handlePostCustomer = async (req, res) => {
             valorMensalidade: valorMensalidadeFinal,
             valor_mensalidade: valorMensalidadeFinal,
             cashback: cashback || 0, 
+            cashbackExpirationDate: expiryFinal,
+            cashback_expiration_date: expiryFinal,
+            cashbackExpiry: expiryFinal,
+            cashback_expiry: expiryFinal,
+            cashbackLost: lostFinal,
+            cashback_lost: lostFinal,
             status: status || 'Ativo' 
         };
         return res.status(201).json({ message: 'Cliente salvo', cliente: clienteData });
@@ -313,6 +385,109 @@ app.delete('/api/customers/:id', authMiddleware, handleDeleteCustomer);
 app.get('/api/clientes', authMiddleware, handleGetCustomers);
 app.post('/api/clientes', authMiddleware, handlePostCustomer);
 app.delete('/api/clientes/:id', authMiddleware, handleDeleteCustomer);
+
+// ==========================================
+// CONFIGURAÇÕES DE PDV, CASHBACK E LEMBRETES POR USUÁRIO
+// ==========================================
+app.get('/api/pdv/config', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query('SELECT pdv_config FROM user_pdv_configs WHERE user_id = $1', [userId]);
+        if (result.rows.length > 0) {
+            return res.json(result.rows[0].pdv_config);
+        }
+        return res.json({
+            messageTemplate: 'Olá {nome}, você realizou uma compra e ganhou R$ {cashback} de cashback!',
+            reminderDays1: 1,
+            reminderDays2: 7,
+            reminderDays3: 15,
+            cashbackPercentage: 3,
+            cashbackValidityDays: 30,
+            activeReminderButton: false
+        });
+    } catch (e) {
+        return res.status(500).json({ error: 'Erro ao buscar configurações do PDV' });
+    }
+});
+
+app.post('/api/pdv/config', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const config = req.body;
+        
+        await pool.query(
+            `INSERT INTO user_pdv_configs (user_id, pdv_config) VALUES ($1, $2)
+             ON CONFLICT (user_id) DO UPDATE SET pdv_config = $2`,
+            [userId, JSON.stringify(config)]
+        );
+
+        return res.json({ success: true, message: 'Configurações do PDV salvas com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao salvar configurações do PDV:', error);
+        return res.status(500).json({ error: 'Erro ao salvar configurações.' });
+    }
+});
+
+// ==========================================
+// ROTAS DE CASHBACK CONFIG (SUPORTE À ABA CASHBACK)
+// ==========================================
+app.get('/api/cashback-config', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const result = await pool.query('SELECT pdv_config FROM user_pdv_configs WHERE user_id = $1', [userId]);
+        if (result.rows.length > 0) {
+            const config = typeof result.rows[0].pdv_config === 'string' 
+                ? JSON.parse(result.rows[0].pdv_config) 
+                : result.rows[0].pdv_config;
+            return res.json({
+                cashbackPercentage: config.cashbackPercentage !== undefined ? config.cashbackPercentage : 3,
+                cashbackValidityDays: config.cashbackValidityDays !== undefined ? config.cashbackValidityDays : 30,
+                cashbackMessage: config.cashbackMessage || 'Oi {nome}, você tem {saldo} em cashback te esperando na nossa loja! Aproveite antes de vencer em {vencimento}. 🎁'
+            });
+        }
+        return res.json({
+            cashbackPercentage: 3,
+            cashbackValidityDays: 30,
+            cashbackMessage: 'Oi {nome}, você tem {saldo} em cashback te esperando na nossa loja! Aproveite antes de vencer em {vencimento}. 🎁'
+        });
+    } catch (e) {
+        console.error('Erro ao buscar config de cashback:', e);
+        return res.status(500).json({ error: 'Erro ao buscar configurações de cashback' });
+    }
+});
+
+app.put('/api/cashback-config', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { cashbackValidityDays, cashbackMessage, cashbackPercentage } = req.body;
+
+        const currentRes = await pool.query('SELECT pdv_config FROM user_pdv_configs WHERE user_id = $1', [userId]);
+        let currentConfig = {};
+        if (currentRes.rows.length > 0) {
+            currentConfig = typeof currentRes.rows[0].pdv_config === 'string' 
+                ? JSON.parse(currentRes.rows[0].pdv_config) 
+                : currentRes.rows[0].pdv_config;
+        }
+
+        const updatedConfig = {
+            ...currentConfig,
+            ...(cashbackValidityDays !== undefined && { cashbackValidityDays: Number(cashbackValidityDays) }),
+            ...(cashbackMessage !== undefined && { cashbackMessage }),
+            ...(cashbackPercentage !== undefined && { cashbackPercentage: Number(cashbackPercentage) })
+        };
+
+        await pool.query(
+            `INSERT INTO user_pdv_configs (user_id, pdv_config) VALUES ($1, $2)
+             ON CONFLICT (user_id) DO UPDATE SET pdv_config = $2`,
+            [userId, JSON.stringify(updatedConfig)]
+        );
+
+        return res.json({ success: true, message: 'Configurações de cashback atualizadas com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao atualizar configurações de cashback:', error);
+        return res.status(500).json({ error: 'Erro interno ao salvar configurações.' });
+    }
+});
 
 const handleGetProducts = async (req, res) => {
     try {
@@ -565,6 +740,8 @@ app.get('/api/sales', authMiddleware, async (req, res) => {
                 discount: Number(s.discount || 0),
                 subtotal: Number(s.subtotal || 0),
                 total: Number(s.total || 0),
+                earnedCashback: Number(s.earned_cashback || s.cashback_earned || 0),
+                earned_cashback: Number(s.earned_cashback || s.cashback_earned || 0),
                 gender: normalizedGender,
                 salesChannel: s.sales_channel || 'Loja física',
                 sales_channel: s.sales_channel || 'Loja física',
@@ -594,6 +771,25 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         const totalVal = Number(s.total || 0);
         const customerId = s.customerId || s.customer_id || null;
 
+        let cashbackPct = 0.03;
+        let validityDays = 30;
+        try {
+            const configRes = await client.query('SELECT pdv_config FROM user_pdv_configs WHERE user_id = $1', [userId]);
+            if (configRes.rows.length > 0 && configRes.rows[0].pdv_config) {
+                const conf = typeof configRes.rows[0].pdv_config === 'string' ? JSON.parse(configRes.rows[0].pdv_config) : configRes.rows[0].pdv_config;
+                if (conf.cashbackPercentage !== undefined) {
+                    cashbackPct = Number(conf.cashbackPercentage) / 100;
+                }
+                if (conf.cashbackValidityDays !== undefined) {
+                    validityDays = Number(conf.cashbackValidityDays);
+                }
+            }
+        } catch (err) {
+            console.warn('[CASHBACK CONFIG WARNING] Usando padrão 3%:', err);
+        }
+
+        const earnedCashback = Number(s.earnedCashback !== undefined ? s.earnedCashback : (s.earned_cashback !== undefined ? s.earned_cashback : (s.cashback_earned !== undefined ? s.cashback_earned : (totalVal * cashbackPct))));
+
         let rawGender = s.gender || 'Prefiro não informar';
         if (rawGender === 'Não informado') rawGender = 'Prefiro não informar';
         const normalizedGender = (rawGender.trim() !== '') ? rawGender : 'Prefiro não informar';
@@ -601,12 +797,12 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         await client.query('BEGIN');
 
         await client.query(`
-            INSERT INTO sales (id, user_id, customer_id, customer_name, seller, payment_method, discount, subtotal, total, gender, sales_channel, delivery_type, items, date)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            INSERT INTO sales (id, user_id, customer_id, customer_name, seller, payment_method, discount, subtotal, total, earned_cashback, cashback_earned, gender, sales_channel, delivery_type, items, date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, $13, $14, $15)
             ON CONFLICT (id) DO UPDATE SET
                 customer_id = $3, customer_name = $4, seller = $5, payment_method = $6,
-                discount = $7, subtotal = $8, total = $9, gender = $10, sales_channel = $11, 
-                delivery_type = $12, items = $13, date = $14
+                discount = $7, subtotal = $8, total = $9, earned_cashback = $10, cashback_earned = $10, gender = $11, sales_channel = $12, 
+                delivery_type = $13, items = $14, date = $15
         `, [
             saleId,
             userId,
@@ -617,6 +813,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
             discountVal,
             subtotalVal,
             totalVal,
+            earnedCashback,
             normalizedGender,
             s.sales_channel || s.salesChannel || 'Loja física',
             s.delivery_type || s.deliveryType || 'Retirada',
@@ -625,10 +822,13 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         ]);
         
         if (customerId) {
-            const earnedCashback = totalVal * 0.03;
+            const expiryDate = new Date();
+            expiryDate.setDate(expiryDate.getDate() + validityDays);
+            const expiryDateStr = expiryDate.toISOString().split('T')[0];
+
             await client.query(
-                `UPDATE customers SET cashback = COALESCE(cashback, 0) + $1 WHERE id = $2 AND user_id = $3`,
-                [earnedCashback, customerId, userId]
+                `UPDATE customers SET cashback = COALESCE(cashback, 0) + $1, cashback_expiration_date = $2, cashback_expiry = $2 WHERE id = $3 AND user_id = $4`,
+                [earnedCashback, expiryDateStr, customerId, userId]
             );
         }
 
@@ -684,7 +884,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         }
 
         await client.query('COMMIT');
-        return res.status(201).json({ message: 'Venda salva, estoque atualizado e cashback computado com sucesso!', saleId });
+        return res.status(201).json({ message: 'Venda salva, estoque atualizado e cashback computado com sucesso!', saleId, earnedCashback });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Erro ao salvar venda e atualizar estoque/cashback:', error);
@@ -789,17 +989,19 @@ const handlePostSeller = async (req, res) => {
         const { id, name, commissionPct } = req.body;
         const sellerId = id || 's' + Date.now();
         const parsedCommission = parseFloat(commissionPct) || 0;
+        const sellerName = name ? name.trim() : 'Vendedor';
 
         await pool.query(`
             INSERT INTO sellers (id, user_id, name, commission_pct)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (id) DO UPDATE SET
-                name = $3, commission_pct = $4
-        `, [sellerId, userId, name, parsedCommission]);
+                name = EXCLUDED.name, 
+                commission_pct = EXCLUDED.commission_pct
+        `, [sellerId, userId, sellerName, parsedCommission]);
 
         return res.status(201).json({ 
             message: 'Vendedor salvo com sucesso', 
-            seller: { id: sellerId, name, commissionPct: parsedCommission } 
+            seller: { id: sellerId, name: sellerName, commissionPct: parsedCommission } 
         });
     } catch (error) {
         console.error('Erro ao salvar vendedor:', error);
@@ -1046,7 +1248,6 @@ app.get('/api/whatsapp/qr', authMiddleware, async (req, res) => {
     return res.json({ success: true, qr: session.qr });
 });
 
-// ROTA DE RESET / FORÇAR NOVO QR CODE
 app.post('/api/whatsapp/reset', authMiddleware, async (req, res) => {
     const userId = req.user.id;
     console.log(`[WHATSAPP ROUTE] POST /api/whatsapp/reset chamado para o User ID: ${userId}`);
@@ -1068,149 +1269,16 @@ app.post('/api/whatsapp/reset', authMiddleware, async (req, res) => {
             console.log(`[WHATSAPP RESET] Pasta de sessão ${sessionPath} removida com sucesso.`);
         }
 
-        const newSession = await getOrCreateWhatsAppSession(userId);
+        await getOrCreateWhatsAppSession(userId);
 
-        return res.json({ success: true, message: 'Sessão reiniciada com sucesso. Aguarde o novo QR Code.' });
+        return res.json({ success: true, message: 'Sessão reiniciada com sucesso. Escaneie o novo QR Code.' });
     } catch (error) {
-        console.error('[WHATSAPP RESET ERROR] Erro ao resetar sessão:', error);
-        return res.status(500).json({ error: 'Erro ao reiniciar sessão do WhatsApp.' });
-    }
-});
-
-app.get('/api/whatsapp', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const result = await pool.query('SELECT schedules FROM user_whatsapp_schedules WHERE user_id = $1', [userId]);
-        if (result.rows.length > 0) {
-            return res.json(result.rows[0].schedules);
-        }
-        return res.json([]);
-    } catch (e) {
-        return res.json([]);
-    }
-});
-
-app.post('/api/whatsapp', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const schedules = req.body;
-        
-        await pool.query(
-            `INSERT INTO user_whatsapp_schedules (user_id, schedules) VALUES ($1, $2)
-             ON CONFLICT (user_id) DO UPDATE SET schedules = $2`,
-            [userId, JSON.stringify(schedules)]
-        );
-
-        return res.json({ success: true, message: 'Agendamentos salvos com sucesso!' });
-    } catch (error) {
-        console.error('Erro ao salvar agendamentos:', error);
-        return res.status(500).json({ error: 'Erro ao salvar programações.' });
-    }
-});
-
-app.post('/api/whatsapp/send-batch', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        console.log(`[WHATSAPP BATCH] Iniciando disparo em lote para o User ID: ${userId}`);
-        
-        const session = await getOrCreateWhatsAppSession(userId);
-
-        if (session.status !== 'connected' || !session.sock) {
-            console.warn(`[WHATSAPP BATCH WARNING] Tentativa de disparo sem conexão ativa para o User ID: ${userId}`);
-            return res.status(400).json({ error: 'WhatsApp não está conectado no backend. Escaneie o QR Code na tela primeiro.' });
-        }
-
-        const { text, sendToAll, customerIds } = req.body;
-
-        let query = 'SELECT name, phone, cashback FROM customers WHERE user_id = $1 AND phone IS NOT NULL AND phone != \'\'';
-        let params = [userId];
-
-        if (!sendToAll && Array.isArray(customerIds) && customerIds.length > 0) {
-            query += ' AND id = ANY($2)';
-            params.push(customerIds);
-        }
-
-        const customersRes = await pool.query(query, params);
-        const customers = customersRes.rows;
-
-        if (customers.length === 0) {
-            return res.status(400).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
-        }
-
-        let sentCount = 0;
-        for (const c of customers) {
-            let message = (text || '')
-                .replace(/{nome}/g, c.name || 'Cliente')
-                .replace(/{saldo}/g, `R$ ${Number(c.cashback || 0).toFixed(2)}`);
-
-            let phoneClean = c.phone.replace(/\D/g, '');
-            if (!phoneClean.startsWith('55')) {
-                phoneClean = '55' + phoneClean;
-            }
-
-            const jid = `${phoneClean}@s.whatsapp.net`;
-            try {
-                await session.sock.sendMessage(jid, { text: message });
-                sentCount++;
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } catch (err) {
-                console.error(`[WHATSAPP BATCH ERROR] Falha ao enviar mensagem para ${phoneClean} (User ${userId}):`, err);
-            }
-        }
-
-        console.log(`[WHATSAPP BATCH SUCCESS] ${sentCount} mensagens enviadas para o usuário ${userId}.`);
-        return res.json({ success: true, message: `${sentCount} mensagens enviadas com sucesso via Baileys!` });
-    } catch (error) {
-        console.error('Erro ao enviar lote pelo Baileys:', error);
-        return res.status(500).json({ error: 'Erro ao processar envio em lote.' });
-    }
-});
-
-app.post('/api/whatsapp/prepare-batch', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { text, sendToAll, customerIds } = req.body;
-
-        let query = 'SELECT name, phone, cashback FROM customers WHERE user_id = $1 AND phone IS NOT NULL AND phone != \'\'';
-        let params = [userId];
-
-        if (!sendToAll && Array.isArray(customerIds) && customerIds.length > 0) {
-            query += ' AND id = ANY($2)';
-            params.push(customerIds);
-        }
-
-        const customersRes = await pool.query(query, params);
-        const customers = customersRes.rows;
-
-        if (customers.length === 0) {
-            return res.status(400).json({ error: 'Nenhum cliente com telefone válido encontrado.' });
-        }
-
-        const messagesList = customers.map(c => {
-            let message = (text || '')
-                .replace(/{nome}/g, c.name || 'Cliente')
-                .replace(/{saldo}/g, `R$ ${Number(c.cashback || 0).toFixed(2)}`);
-
-            let phoneClean = c.phone.replace(/\D/g, '');
-            if (!phoneClean.startsWith('55')) {
-                phoneClean = '55' + phoneClean;
-            }
-
-            return {
-                phone: phoneClean,
-                name: c.name,
-                whatsappUrl: `https://wa.me/${phoneClean}?text=${encodeURIComponent(message)}`
-            };
-        });
-
-        return res.json({ success: true, targets: messagesList });
-    } catch (error) {
-        console.error('Erro ao preparar lote do WhatsApp:', error);
-        return res.status(500).json({ error: 'Erro ao preparar lote.' });
+        console.error('[WHATSAPP RESET ERROR]', error);
+        return res.status(500).json({ error: 'Erro ao resetar sessão do WhatsApp.' });
     }
 });
 
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`\n🚀 Servidor rodando na porta ${PORT}`);
 });

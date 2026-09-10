@@ -1,119 +1,112 @@
 // @ts-nocheck
 import React, { useState } from "react";
-import { Save, User, Mail, Smartphone, CreditCard, Calendar } from "lucide-react";
 import { inputStyle, lbl } from "../utils/helpers";
 
-export function CustomerRegistration({ onSave, onCancel, card, border, text, subtext, accent }) {
-  const [form, setForm] = useState({
-    name: "",
-    cpf: "",
-    email: "",
-    phone: "",
-    data_aniversario: ""
-  });
+export function CustomerRegistration({ card, border, text, subtext, accent, onSave }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [initialCashback, setInitialCashback] = useState("0");
+  const [validityDays, setValidityDays] = useState("30");
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSave = () => {
-    if (!form.name || !form.phone) {
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!name || !phone) {
       alert("Nome e Telefone são obrigatórios!");
       return;
     }
-    onSave(form);
+
+    const days = parseInt(validityDays) || 30;
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + days);
+    const expiryDateStr = expiryDate.toISOString().split('T')[0];
+
+    onSave({
+      name,
+      phone,
+      cpf,
+      data_aniversario: birthDate || null,
+      cashback: parseFloat(initialCashback) || 0,
+      cashback_expiry: expiryDateStr,
+      cashback_expiration_date: expiryDateStr
+    });
   };
 
   return (
     <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 14, padding: 20 }}>
-      <h3 style={{ fontFamily: "inherit", fontSize: 18, marginBottom: 16, color: text }}>Novo Cadastro de Cliente</h3>
-      
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* NOME */}
+      <h3 style={{ color: text, margin: "0 0 15px 0", fontSize: 16 }}>Cadastro Inicial de Cliente com Cashback Personalizado</h3>
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
-          <label style={lbl(subtext)}>NOME COMPLETO</label>
-          <div style={{ position: "relative" }}>
-            <User size={16} style={{ position: "absolute", left: 10, top: 10, color: subtext }} />
+          <label style={lbl(subtext)}>Nome do Cliente *</label>
+          <input 
+            value={name} 
+            onChange={(e) => setName(e.target.value)} 
+            placeholder="Ex: João Silva" 
+            style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }} 
+            required 
+          />
+        </div>
+        <div>
+          <label style={lbl(subtext)}>Telefone / WhatsApp *</label>
+          <input 
+            value={phone} 
+            onChange={(e) => setPhone(e.target.value)} 
+            placeholder="(00) 00000-0000" 
+            style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }} 
+            required 
+          />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={lbl(subtext)}>CPF</label>
             <input 
-              name="name" value={form.name} onChange={handleChange}
-              placeholder="Ex: João Silva"
-              style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
+              value={cpf} 
+              onChange={(e) => setCpf(e.target.value)} 
+              placeholder="000.000.000-00" 
+              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }} 
             />
           </div>
-        </div>
-
-        {/* CPF */}
-        <div>
-          <label style={lbl(subtext)}>CPF</label>
-          <div style={{ position: "relative" }}>
-            <CreditCard size={16} style={{ position: "absolute", left: 10, top: 10, color: subtext }} />
-            <input 
-              name="cpf" value={form.cpf} onChange={handleChange}
-              placeholder="000.000.000-00"
-              style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
-            />
-          </div>
-        </div>
-
-        {/* EMAIL */}
-        <div>
-          <label style={lbl(subtext)}>E-MAIL</label>
-          <div style={{ position: "relative" }}>
-            <Mail size={16} style={{ position: "absolute", left: 10, top: 10, color: subtext }} />
-            <input 
-              name="email" value={form.email} onChange={handleChange}
-              placeholder="email@exemplo.com"
-              style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
-            />
-          </div>
-        </div>
-
-        {/* TELEFONE */}
-        <div>
-          <label style={lbl(subtext)}>TELEFONE</label>
-          <div style={{ position: "relative" }}>
-            <Smartphone size={16} style={{ position: "absolute", left: 10, top: 10, color: subtext }} />
-            <input 
-              name="phone" value={form.phone} onChange={handleChange}
-              placeholder="(00) 00000-0000"
-              style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
-            />
-          </div>
-        </div>
-
-        {/* DATA DE ANIVERSÁRIO */}
-        <div>
-          <label style={lbl(subtext)}>DATA DE ANIVERSÁRIO</label>
-          <div style={{ position: "relative" }}>
-            <Calendar size={16} style={{ position: "absolute", left: 10, top: 10, color: subtext }} />
+          <div>
+            <label style={lbl(subtext)}>Data de Aniversário</label>
             <input 
               type="date"
-              name="data_aniversario" 
-              value={form.data_aniversario} 
-              onChange={handleChange}
-              style={{ ...inputStyle(border, text), paddingLeft: 35, width: "100%" }} 
+              value={birthDate} 
+              onChange={(e) => setBirthDate(e.target.value)} 
+              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }} 
             />
           </div>
         </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={lbl(subtext)}>Cashback Inicial (R$)</label>
+            <input 
+              type="number"
+              step="0.01"
+              value={initialCashback} 
+              onChange={(e) => setInitialCashback(e.target.value)} 
+              placeholder="0.00" 
+              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }} 
+            />
+          </div>
+          <div>
+            <label style={lbl(subtext)}>Validade do Cashback (Dias)</label>
+            <input 
+              type="number"
+              value={validityDays} 
+              onChange={(e) => setValidityDays(e.target.value)} 
+              placeholder="30" 
+              style={{ ...inputStyle(border, text), width: "100%", marginTop: 4 }} 
+            />
+          </div>
+        </div>
         <button 
-          onClick={handleSave}
-          style={{ background: accent, border: "none", color: "#fff", padding: "10px 20px", borderRadius: 8, cursor: "pointer", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+          type="submit" 
+          style={{ background: accent, color: "#fff", border: "none", borderRadius: 8, padding: 12, fontWeight: "bold", cursor: "pointer", marginTop: 10 }}
         >
-          <Save size={16} /> Salvar Cliente
+          Salvar e Cadastrar Cliente
         </button>
-        {onCancel && (
-          <button 
-            onClick={onCancel}
-            style={{ background: "transparent", border: `1px solid ${border}`, color: text, padding: "10px 20px", borderRadius: 8, cursor: "pointer" }}
-          >
-            Cancelar
-          </button>
-        )}
-      </div>
+      </form>
     </div>
   );
 }

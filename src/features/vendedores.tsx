@@ -39,11 +39,11 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
     };
 
     fetchSellers();
-  }, []);
+  }, [API_URL, setSellers]);
 
   const startEdit = (s) => {
     setEditingId(s.id);
-    setForm({ name: s.name, commissionPct: String(s.commissionPct) });
+    setForm({ name: s.name, commissionPct: String(s.commissionPct ?? 5) });
     setShowForm(true);
   };
 
@@ -54,10 +54,11 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
   };
 
   const save = async () => {
-    if (!form.name) return;
-    const sellerData = {
-      id: editingId || "s" + Date.now(),
-      name: form.name,
+    if (!form.name.trim()) return;
+    
+    const sellerPayload = {
+      id: editingId || ("s" + Date.now()),
+      name: form.name.trim(),
       commissionPct: parseFloat(form.commissionPct) || 0
     };
 
@@ -65,15 +66,18 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
       const response = await fetch(`${API_URL}/api/vendedores`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify(sellerData)
+        body: JSON.stringify(sellerPayload)
       });
 
       if (!response.ok) throw new Error("Erro ao salvar no servidor");
 
+      const result = await response.json();
+      const savedSeller = result.seller || sellerPayload;
+
       if (editingId) {
-        setSellers(sellers.map((s) => (s.id === editingId ? sellerData : s)));
+        setSellers(sellers.map((s) => (s.id === editingId ? savedSeller : s)));
       } else {
-        setSellers([...sellers, sellerData]);
+        setSellers([...sellers, savedSeller]);
       }
       cancel();
     } catch (error) {
@@ -125,6 +129,7 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
           <input 
             placeholder="Comissão (%)" 
             type="number" 
+            step="0.1"
             value={form.commissionPct} 
             onChange={(e) => setForm({ ...form, commissionPct: e.target.value })} 
             style={{ ...inputStyle(border, text), flex: "0 0 130px" }} 
@@ -154,7 +159,8 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
         {sellers.map((s, i) => {
           const sellerSales = sales.filter((v) => v.seller === s.name || v.seller === s.id);
           const total = sellerSales.reduce((a, v) => a + v.total, 0);
-          const commission = (total * s.commissionPct) / 100;
+          const commissionPct = Number(s.commissionPct || 0);
+          const commission = (total * commissionPct) / 100;
 
           return (
             <div key={s.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 0.6fr", padding: "12px 14px", fontSize: 13, alignItems: "center", borderBottom: i < sellers.length - 1 ? `1px solid ${border}` : "none" }}>
@@ -162,7 +168,7 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
               <div>{sellerSales.length}</div>
               <div style={{ fontWeight: 700 }}>{money(total)}</div>
               <div style={{ color: accent, fontWeight: 700 }}>
-                {money(commission)} <span style={{ color: subtext, fontWeight: 400 }}>({s.commissionPct}%)</span>
+                {money(commission)} <span style={{ color: subtext, fontWeight: 400 }}>({commissionPct}%)</span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => startEdit(s)} style={{ background: "none", border: "none", cursor: "pointer" }}>
@@ -179,4 +185,3 @@ export function Vendedores({ sellers, setSellers, sales, card, border, subtext, 
     </div>
   );
 }
-
