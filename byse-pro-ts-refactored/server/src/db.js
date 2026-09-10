@@ -40,8 +40,9 @@ export async function initDb() {
       pdv_config JSONB DEFAULT '{}'
     );
 
+    -- Tabelas com Chave Primária Composta (id, user_id) para isolamento multi-usuário correto
     CREATE TABLE IF NOT EXISTS customers (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL,
@@ -57,18 +58,12 @@ export async function initDb() {
       status_mensalidade VARCHAR(100) DEFAULT 'Pendente (Não Pago)',
       data_vencimento DATE,
       valor_mensalidade NUMERIC DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
 
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS data_aniversario DATE;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback NUMERIC DEFAULT 0;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback_expiration_date DATE;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback_expiry DATE;
-    ALTER TABLE customers ADD COLUMN IF NOT EXISTS cashback_lost NUMERIC DEFAULT 0;
-
     CREATE TABLE IF NOT EXISTS products (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       category VARCHAR(255),
@@ -84,23 +79,19 @@ export async function initDb() {
       control_stock BOOLEAN DEFAULT TRUE,
       image_url TEXT,
       stocks JSONB DEFAULT '{}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
-
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS vip_price_3x NUMERIC;
 
     CREATE TABLE IF NOT EXISTS stock_locations (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
-      name VARCHAR(255) NOT NULL
+      name VARCHAR(255) NOT NULL,
+      PRIMARY KEY (id, user_id)
     );
 
-    ALTER TABLE stock_locations ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-
     CREATE TABLE IF NOT EXISTS sales (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       customer_id VARCHAR(255),
       customer_name VARCHAR(255),
@@ -115,49 +106,42 @@ export async function initDb() {
       sales_channel VARCHAR(100),
       delivery_type VARCHAR(100),
       items JSONB DEFAULT '[]',
-      date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
 
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashback_earned NUMERIC DEFAULT 0;
-    ALTER TABLE sales ADD COLUMN IF NOT EXISTS earned_cashback NUMERIC DEFAULT 0;
-
     CREATE TABLE IF NOT EXISTS sellers (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       commission_pct NUMERIC DEFAULT 5,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
-    
-    ALTER TABLE sellers ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-    ALTER TABLE sellers ADD COLUMN IF NOT EXISTS commission_pct NUMERIC DEFAULT 5;
 
     CREATE TABLE IF NOT EXISTS fiados (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       customer_id VARCHAR(255),
       customer_name VARCHAR(255),
       products TEXT,
       origin VARCHAR(50) DEFAULT 'manual',
       installments JSONB DEFAULT '[]',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
 
-    ALTER TABLE fiados ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-
     CREATE TABLE IF NOT EXISTS pre_treino_produtos (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       cost NUMERIC DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
 
-    ALTER TABLE pre_treino_produtos ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
-
     CREATE TABLE IF NOT EXISTS pre_treino_registros (
-      id VARCHAR(255) PRIMARY KEY,
+      id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
       customer_id VARCHAR(255),
       nome_cliente VARCHAR(255),
@@ -166,10 +150,9 @@ export async function initDb() {
       custo NUMERIC DEFAULT 0,
       data VARCHAR(50),
       horario VARCHAR(50),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, user_id)
     );
-
-    ALTER TABLE pre_treino_registros ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
 
     CREATE TABLE IF NOT EXISTS user_whatsapp_schedules (
       user_id VARCHAR(255) PRIMARY KEY,
@@ -177,5 +160,5 @@ export async function initDb() {
     );
   `);
 
-  console.log('✅ Banco de dados PostgreSQL inicializado e isolado por usuário com sucesso!');
+  console.log('✅ Banco de dados PostgreSQL inicializado com chaves compostas e isolamento perfeito por usuário!');
 }

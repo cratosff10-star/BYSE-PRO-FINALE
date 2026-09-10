@@ -100,7 +100,6 @@ cron.schedule('0 9 * * *', async () => {
         for (const customer of customersRes.rows) {
             const userId = customer.user_id;
             
-            // Buscar configuração do usuário
             const configRes = await pool.query('SELECT pdv_config FROM user_pdv_configs WHERE user_id = $1', [userId]);
             if (configRes.rows.length === 0) continue;
             
@@ -108,7 +107,7 @@ cron.schedule('0 9 * * *', async () => {
                 ? JSON.parse(configRes.rows[0].pdv_config) 
                 : configRes.rows[0].pdv_config;
 
-            if (!config.activeReminderButton) continue; // Só envia se o botão estiver ativo no PDV
+            if (!config.activeReminderButton) continue;
 
             const expiryRaw = customer.cashback_expiry || customer.cashback_expiration_date;
             if (!expiryRaw) continue;
@@ -121,7 +120,6 @@ cron.schedule('0 9 * * *', async () => {
             const diffTime = expiryDate.getTime() - today.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-            // Verificar se os dias restantes batem com os personalizados ou se há lembretes configurados
             const triggerDays = [config.reminderDays1 || 1, config.reminderDays2 || 7, config.reminderDays3 || 15];
             
             if (triggerDays.includes(diffDays) && customer.phone) {
@@ -303,10 +301,11 @@ const handlePostCustomer = async (req, res) => {
         const expiryFinal = cashback_expiration_date || cashbackExpirationDate || cashback_expiry || cashbackExpiry || null;
         const lostFinal = cashback_lost !== undefined ? cashback_lost : (cashbackLost !== undefined ? cashbackLost : 0);
         
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(
             `INSERT INTO customers (id, user_id, name, phone, cpf, data_aniversario, cashback, cashback_expiration_date, cashback_expiry, cashback_lost, status, status_mensalidade, data_vencimento, valor_mensalidade) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-             ON CONFLICT (id) DO UPDATE SET 
+             ON CONFLICT (id, user_id) DO UPDATE SET 
                 name = $3, 
                 phone = $4, 
                 cpf = COALESCE($5, customers.cpf),
@@ -428,9 +427,6 @@ app.post('/api/pdv/config', authMiddleware, async (req, res) => {
     }
 });
 
-// ==========================================
-// ROTAS DE CASHBACK CONFIG (SUPORTE À ABA CASHBACK)
-// ==========================================
 app.get('/api/cashback-config', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -533,6 +529,7 @@ const handlePostProduct = async (req, res) => {
         const imageUrlVal = p.imageUrl !== undefined ? p.imageUrl : p.image_url;
         const stocksVal = p.stocks !== undefined ? p.stocks : p.stock;
 
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(`
             INSERT INTO products (
                 id, user_id, name, category, barcode, code, cost, price, 
@@ -540,7 +537,7 @@ const handlePostProduct = async (req, res) => {
                 control_stock, image_url, stocks
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-            ON CONFLICT (id) DO UPDATE SET
+            ON CONFLICT (id, user_id) DO UPDATE SET
                 name = $3, 
                 category = $4, 
                 barcode = $5, 
@@ -796,10 +793,11 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
 
         await client.query('BEGIN');
 
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await client.query(`
             INSERT INTO sales (id, user_id, customer_id, customer_name, seller, payment_method, discount, subtotal, total, earned_cashback, cashback_earned, gender, sales_channel, delivery_type, items, date)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, $13, $14, $15)
-            ON CONFLICT (id) DO UPDATE SET
+            ON CONFLICT (id, user_id) DO UPDATE SET
                 customer_id = $3, customer_name = $4, seller = $5, payment_method = $6,
                 discount = $7, subtotal = $8, total = $9, earned_cashback = $10, cashback_earned = $10, gender = $11, sales_channel = $12, 
                 delivery_type = $13, items = $14, date = $15
@@ -928,10 +926,11 @@ app.post('/api/fiados', authMiddleware, async (req, res) => {
         const fiadoId = f.id || `fd_${Date.now()}`;
         const installments = typeof f.installments === 'string' ? JSON.parse(f.installments || '[]') : (f.installments || []);
 
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(`
             INSERT INTO fiados (id, user_id, customer_id, customer_name, products, origin, installments)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (id) DO UPDATE SET
+            ON CONFLICT (id, user_id) DO UPDATE SET
                 customer_id = $3, customer_name = $4, products = $5, origin = $6, installments = $7
         `, [
             fiadoId,
@@ -991,10 +990,11 @@ const handlePostSeller = async (req, res) => {
         const parsedCommission = parseFloat(commissionPct) || 0;
         const sellerName = name ? name.trim() : 'Vendedor';
 
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(`
             INSERT INTO sellers (id, user_id, name, commission_pct)
             VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO UPDATE SET
+            ON CONFLICT (id, user_id) DO UPDATE SET
                 name = EXCLUDED.name, 
                 commission_pct = EXCLUDED.commission_pct
         `, [sellerId, userId, sellerName, parsedCommission]);
@@ -1049,7 +1049,7 @@ app.get('/api/locais', authMiddleware, async (req, res) => {
         if (result.rows.length === 0) {
             const defaultLocId = 'loc_main_' + userId;
             await pool.query(
-                'INSERT INTO stock_locations (id, user_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
+                'INSERT INTO stock_locations (id, user_id, name) VALUES ($1, $2, $3) ON CONFLICT (id, user_id) DO NOTHING',
                 [defaultLocId, userId, 'Loja Física']
             ).catch(() => {});
             return res.status(200).json([{ id: defaultLocId, name: 'Loja Física' }]);
@@ -1075,7 +1075,7 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
         } else if (name) {
             const newId = 'loc_' + Date.now();
             await pool.query(
-                'INSERT INTO stock_locations (id, user_id, name) VALUES ($1, $2, $3)',
+                'INSERT INTO stock_locations (id, user_id, name) VALUES ($1, $2, $3) ON CONFLICT (id, user_id) DO NOTHING',
                 [newId, userId, name]
             );
         }
@@ -1102,9 +1102,9 @@ app.get('/api/pre-treino/products', authMiddleware, async (req, res) => {
             ];
             for (const p of defaultProds) {
                 await pool.query(
-                    'INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
+                    'INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4) ON CONFLICT (id, user_id) DO NOTHING',
                     [p.id, userId, p.name, p.cost]
-                );
+                ).catch(() => {});
             }
             return res.status(200).json(defaultProds.map(p => ({ ...p, nome: p.name, custo: p.cost })));
         }
@@ -1129,9 +1129,10 @@ app.post('/api/pre-treino/products', authMiddleware, async (req, res) => {
         const finalCost = cost !== undefined ? cost : (custo !== undefined ? custo : 0);
         const prodId = id || 'pt_prod_' + Date.now();
         
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(
             `INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4)
-             ON CONFLICT (id) DO UPDATE SET name = $3, cost = $4`,
+             ON CONFLICT (id, user_id) DO UPDATE SET name = $3, cost = $4`,
             [prodId, userId, finalName, parseFloat(finalCost) || 0]
         );
         return res.status(201).json({ message: 'Produto de pré-treino salvo!' });
@@ -1190,16 +1191,17 @@ app.post('/api/pre-treino/records', authMiddleware, async (req, res) => {
         const customerId = r.customerId || r.customer_id || null;
         const nomeCliente = r.customerName || r.nomeCliente || r.nome_cliente || 'Cliente';
         const produtoId = r.productId || r.produto_id || '';
-        const nomeProduto = r.productName || r.nomeProduto || r.nome_produto || '';
+        const nomeproduto = r.productName || r.nomeProduto || r.nome_produto || '';
         const custo = Number(r.cost !== undefined ? r.cost : (r.custo !== undefined ? r.custo : 0));
         const data = r.date || r.data || new Date().toISOString().split('T')[0];
         const horario = r.horario || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(
             `INSERT INTO pre_treino_registros (id, user_id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horario)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             ON CONFLICT (id) DO UPDATE SET customer_id = $3, nome_cliente = $4, produto_id = $5, nome_produto = $6, custo = $7, data = $8, horario = $9`,
-            [recordId, userId, customerId, nomeCliente, produtoId, nomeProduto, custo, data, horario]
+             ON CONFLICT (id, user_id) DO UPDATE SET customer_id = $3, nome_cliente = $4, produto_id = $5, nome_produto = $6, custo = $7, data = $8, horario = $9`,
+            [recordId, userId, customerId, nomeCliente, produtoId, nomeproduto, custo, data, horario]
         );
         return res.status(201).json({ message: 'Registro de pré-treino salvo!' });
     } catch (error) {
