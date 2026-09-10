@@ -102,7 +102,8 @@ app.post('/api/login', async (req, res) => {
 
         let user;
         if (result.rows.length === 0) {
-            const newId = '1787335620584';
+            // CORREÇÃO SÊNIOR: Geração de ID dinâmico e estritamente único para novos cadastros
+            const newId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
             const hashedPassword = await bcrypt.hash(password || '123456', 10);
             
             await pool.query(
@@ -1051,27 +1052,22 @@ app.post('/api/whatsapp/reset', authMiddleware, async (req, res) => {
     console.log(`[WHATSAPP ROUTE] POST /api/whatsapp/reset chamado para o User ID: ${userId}`);
 
     try {
-        // 1. Desconectar o socket atual se existir
         if (activeSessions[userId]?.sock) {
             try {
                 await activeSessions[userId].sock.logout();
-            } catch (e) {
-                // Ignorar erro caso já esteja desconectado
-            }
+            } catch (e) {}
             try {
                 activeSessions[userId].sock.end(undefined);
             } catch (e) {}
         }
         delete activeSessions[userId];
 
-        // 2. Deletar a pasta de credenciais em disco do usuário
         const sessionPath = `auth_info_baileys_${userId}`;
         if (fs.existsSync(sessionPath)) {
             fs.rmSync(sessionPath, { recursive: true, force: true });
             console.log(`[WHATSAPP RESET] Pasta de sessão ${sessionPath} removida com sucesso.`);
         }
 
-        // 3. Inicializar uma nova sessão imediatamente para gerar novo QR Code
         const newSession = await getOrCreateWhatsAppSession(userId);
 
         return res.json({ success: true, message: 'Sessão reiniciada com sucesso. Aguarde o novo QR Code.' });
