@@ -69,8 +69,15 @@ function SupplementSystem() {
         };
     };
 
+    // Helper para obter chaves do localStorage escopadas por usuário
+    const getStorageKey = (key: string) => {
+        const userId = user?.id || user?.email || "guest";
+        return `byse_${key}_${userId}`;
+    };
+
     const fetchUserData = async () => {
         const headers = getAuthHeaders();
+        const currentUserId = user?.id || user?.email;
 
         try {
             const resCustomers = await fetch(`${API_URL}/customers`, { headers });
@@ -78,7 +85,7 @@ function SupplementSystem() {
                 const data = await resCustomers.json();
                 if (Array.isArray(data)) {
                     setCustomers([...data]);
-                    localStorage.setItem("byse_customers", JSON.stringify(data));
+                    localStorage.setItem(getStorageKey("customers"), JSON.stringify(data));
                 }
             }
 
@@ -95,7 +102,7 @@ function SupplementSystem() {
                         gender: s.gender || s.genders || 'Prefiro não informar'
                     }));
                     setSales([...normalizedSales]);
-                    localStorage.setItem("byse_sales", JSON.stringify(normalizedSales));
+                    localStorage.setItem(getStorageKey("sales"), JSON.stringify(normalizedSales));
                 }
             }
 
@@ -104,7 +111,7 @@ function SupplementSystem() {
                 const data = await resProducts.json();
                 if (Array.isArray(data)) {
                     setProducts([...data]);
-                    localStorage.setItem("byse_products", JSON.stringify(data));
+                    localStorage.setItem(getStorageKey("products"), JSON.stringify(data));
                 }
             }
 
@@ -113,7 +120,7 @@ function SupplementSystem() {
                 const data = await resSellers.json();
                 if (Array.isArray(data)) {
                     setSellers([...data]);
-                    localStorage.setItem("byse_sellers", JSON.stringify(data));
+                    localStorage.setItem(getStorageKey("sellers"), JSON.stringify(data));
                 }
             }
 
@@ -122,7 +129,7 @@ function SupplementSystem() {
                 const data = await resFiados.json();
                 if (Array.isArray(data)) {
                     setFiados([...data]);
-                    localStorage.setItem("byse_fiados", JSON.stringify(data));
+                    localStorage.setItem(getStorageKey("fiados"), JSON.stringify(data));
                 }
             }
 
@@ -131,7 +138,7 @@ function SupplementSystem() {
                 const data = await resPtRecs.json();
                 if (Array.isArray(data)) {
                     setPreTreinoRecords([...data]);
-                    localStorage.setItem("byse_pre_treino_records", JSON.stringify(data));
+                    localStorage.setItem(getStorageKey("pre_treino_records"), JSON.stringify(data));
                 }
             }
 
@@ -140,7 +147,7 @@ function SupplementSystem() {
                 const data = await resPtProds.json();
                 if (Array.isArray(data)) {
                     setProdutosPreTreino([...data]);
-                    localStorage.setItem("byse_pre_treino_products", JSON.stringify(data));
+                    localStorage.setItem(getStorageKey("pre_treino_products"), JSON.stringify(data));
                 }
             }
         } catch (err) {
@@ -184,6 +191,25 @@ function SupplementSystem() {
             try {
                 const parsedUser = JSON.parse(savedUser);
                 setUser(parsedUser);
+                
+                // Carrega dados locais específicos deste usuário imediatamente para evitar tela vazia/misturada
+                const uKey = parsedUser?.id || parsedUser?.email || "guest";
+                const localCust = localStorage.getItem(`byse_customers_${uKey}`);
+                const localProd = localStorage.getItem(`byse_products_${uKey}`);
+                const localSales = localStorage.getItem(`byse_sales_${uKey}`);
+                const localSellers = localStorage.getItem(`byse_sellers_${uKey}`);
+                const localFiados = localStorage.getItem(`byse_fiados_${uKey}`);
+                const localPtRecs = localStorage.getItem(`byse_pre_treino_records_${uKey}`);
+                const localPtProds = localStorage.getItem(`byse_pre_treino_products_${uKey}`);
+
+                if (localCust) setCustomers(JSON.parse(localCust));
+                if (localProd) setProducts(JSON.parse(localProd));
+                if (localSales) setSales(JSON.parse(localSales));
+                if (localSellers) setSellers(JSON.parse(localSellers));
+                if (localFiados) setFiados(JSON.parse(localFiados));
+                if (localPtRecs) setPreTreinoRecords(JSON.parse(localPtRecs));
+                if (localPtProds) setProdutosPreTreino(JSON.parse(localPtProds));
+
                 setLoading(true);
                 fetchUserData().finally(() => setLoading(false));
                 return;
@@ -199,14 +225,56 @@ function SupplementSystem() {
     const handleLogin = (userData, token) => {
         if (token) localStorage.setItem("byse_token", token);
         localStorage.setItem("byse_user", JSON.stringify(userData));
+        
+        // Limpa estados imediatamente para evitar vazamento visual de dados da conta anterior
+        setCustomers([]);
+        setSales([]);
+        setProducts([]);
+        setSellers([]);
+        setFiados([]);
+        setPreTreinoRecords([]);
+        setProdutosPreTreino([]);
+
         setUser(userData);
         setLoading(true);
+
+        // Tenta carregar dados locais específicos do novo usuário se existirem
+        const uKey = userData?.id || userData?.email || "guest";
+        const localCust = localStorage.getItem(`byse_customers_${uKey}`);
+        const localProd = localStorage.getItem(`byse_products_${uKey}`);
+        const localSales = localStorage.getItem(`byse_sales_${uKey}`);
+        const localSellers = localStorage.getItem(`byse_sellers_${uKey}`);
+        const localFiados = localStorage.getItem(`byse_fiados_${uKey}`);
+        const localPtRecs = localStorage.getItem(`byse_pre_treino_records_${uKey}`);
+        const localPtProds = localStorage.getItem(`byse_pre_treino_products_${uKey}`);
+
+        if (localCust) setCustomers(JSON.parse(localCust));
+        if (localProd) setProducts(JSON.parse(localProd));
+        if (localSales) setSales(JSON.parse(localSales));
+        if (localSellers) setSellers(JSON.parse(localSellers));
+        if (localFiados) setFiados(JSON.parse(localFiados));
+        if (localPtRecs) setPreTreinoRecords(JSON.parse(localPtRecs));
+        if (localPtProds) setProdutosPreTreino(JSON.parse(localPtProds));
+
         fetchUserData().finally(() => setLoading(false));
     };
 
     const handleLogout = () => {
+        // Limpa todos os dados locais associados aos usuários ou globais antigos
         localStorage.removeItem("byse_token");
         localStorage.removeItem("byse_user");
+        
+        // Limpa chaves legadas e escopadas do usuário atual
+        const uKey = user?.id || user?.email;
+        if (uKey) {
+            localStorage.removeItem(`byse_customers_${uKey}`);
+            localStorage.removeItem(`byse_products_${uKey}`);
+            localStorage.removeItem(`byse_sales_${uKey}`);
+            localStorage.removeItem(`byse_sellers_${uKey}`);
+            localStorage.removeItem(`byse_fiados_${uKey}`);
+            localStorage.removeItem(`byse_pre_treino_records_${uKey}`);
+            localStorage.removeItem(`byse_pre_treino_products_${uKey}`);
+        }
         localStorage.removeItem("byse_customers");
         localStorage.removeItem("byse_products");
         localStorage.removeItem("byse_sales");
@@ -214,6 +282,7 @@ function SupplementSystem() {
         localStorage.removeItem("byse_fiados");
         localStorage.removeItem("byse_pre_treino_records");
         localStorage.removeItem("byse_pre_treino_products");
+
         setUser(null);
         setCustomers([]);
         setSales([]);
@@ -242,7 +311,7 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setCustomers([...newCustomers]);
-                    localStorage.setItem("byse_customers", JSON.stringify(newCustomers));
+                    localStorage.setItem(getStorageKey("customers"), JSON.stringify(newCustomers));
                 }
             } catch (err) {
                 console.error("Erro ao salvar cliente no banco:", err);
@@ -271,7 +340,7 @@ function SupplementSystem() {
                         const updated = exists 
                             ? prev.map(p => p.id === finalProduct.id ? finalProduct : p)
                             : [...prev, finalProduct];
-                        localStorage.setItem("byse_products", JSON.stringify(updated));
+                        localStorage.setItem(getStorageKey("products"), JSON.stringify(updated));
                         return updated;
                     });
                 }
@@ -291,7 +360,7 @@ function SupplementSystem() {
             if (response.ok) {
                 const updatedProducts = products.filter(p => p.id !== productId);
                 setProducts(updatedProducts);
-                localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
+                localStorage.setItem(getStorageKey("products"), JSON.stringify(updatedProducts));
             } else {
                 console.error("Erro ao excluir produto no servidor");
             }
@@ -313,7 +382,7 @@ function SupplementSystem() {
                 const finalProduct = savedData.id ? savedData : updatedProduct;
                 const updatedProducts = products.map(p => p.id === finalProduct.id ? finalProduct : p);
                 setProducts(updatedProducts);
-                localStorage.setItem("byse_products", JSON.stringify(updatedProducts));
+                localStorage.setItem(getStorageKey("products"), JSON.stringify(updatedProducts));
             } else {
                 await handleUpdateProducts(updatedProduct);
             }
@@ -337,7 +406,7 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setSellers([...newSellers]);
-                    localStorage.setItem("byse_sellers", JSON.stringify(newSellers));
+                    localStorage.setItem(getStorageKey("sellers"), JSON.stringify(newSellers));
                 }
             } catch (err) {
                 console.error("Erro ao salvar vendedor no banco:", err);
@@ -364,7 +433,7 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setFiados([...newFiados]);
-                    localStorage.setItem("byse_fiados", JSON.stringify(newFiados));
+                    localStorage.setItem(getStorageKey("fiados"), JSON.stringify(newFiados));
                 }
             } catch (err) {
                 console.error("Erro ao salvar fiado no banco:", err);
@@ -398,7 +467,7 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setSales([...newSales]);
-                    localStorage.setItem("byse_sales", JSON.stringify(newSales));
+                    localStorage.setItem(getStorageKey("sales"), JSON.stringify(newSales));
                 }
             } catch (err) {
                 console.error("Erro de conexão ao registrar venda:", err);
@@ -417,14 +486,14 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setPreTreinoRecords([...newRecords]);
-                    localStorage.setItem("byse_pre_treino_records", JSON.stringify(newRecords));
+                    localStorage.setItem(getStorageKey("pre_treino_records"), JSON.stringify(newRecords));
                 }
             } catch (err) {
                 console.error("Erro ao salvar registro de pré-treino:", err);
             }
         } else {
             setPreTreinoRecords([...newRecords]);
-            localStorage.setItem("byse_pre_treino_records", JSON.stringify(newRecords));
+            localStorage.setItem(getStorageKey("pre_treino_records"), JSON.stringify(newRecords));
         }
     };
 
@@ -439,14 +508,14 @@ function SupplementSystem() {
                 });
                 if (response.ok) {
                     setProdutosPreTreino([...newProds]);
-                    localStorage.setItem("byse_pre_treino_products", JSON.stringify(newProds));
+                    localStorage.setItem(getStorageKey("pre_treino_products"), JSON.stringify(newProds));
                 }
             } catch (err) {
                 console.error("Erro ao salvar produto de pré-treino:", err);
             }
         } else {
             setProdutosPreTreino([...newProds]);
-            localStorage.setItem("byse_pre_treino_products", JSON.stringify(newProds));
+            localStorage.setItem(getStorageKey("pre_treino_products"), JSON.stringify(newProds));
         }
     };
 
@@ -540,19 +609,19 @@ function SupplementSystem() {
                 clientes={customers} 
                 setClientes={(newCusts) => {
                     setCustomers(newCusts);
-                    localStorage.setItem("byse_customers", JSON.stringify(newCusts));
+                    localStorage.setItem(getStorageKey("customers"), JSON.stringify(newCusts));
                     handleUpdateCustomers(newCusts);
                 }} 
                 produtosPreTreino={produtosPreTreino}
                 setProdutosPreTreino={(newProds) => {
                     setProdutosPreTreino(newProds);
-                    localStorage.setItem("byse_pre_treino_products", JSON.stringify(newProds));
+                    localStorage.setItem(getStorageKey("pre_treino_products"), JSON.stringify(newProds));
                     handleUpdatePreTreinoProducts(newProds);
                 }}
                 registros={preTreinoRecords} 
                 setRegistros={(newRecs) => {
                     setPreTreinoRecords(newRecs);
-                    localStorage.setItem("byse_pre_treino_records", JSON.stringify(newRecs));
+                    localStorage.setItem(getStorageKey("pre_treino_records"), JSON.stringify(newRecs));
                     handleUpdatePreTreinoRecords(newRecs);
                 }} 
                 API_URL={API_URL}
