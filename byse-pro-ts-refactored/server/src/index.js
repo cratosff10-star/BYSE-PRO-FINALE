@@ -3,14 +3,12 @@ import cors from 'cors';
 import cron from 'node-cron';
 import { pool, initDb } from './db.js';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import 'dotenv/config';
 
-// Importações do Baileys, utilitários e gerador de QR Code em imagem
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
 import QRCode from 'qrcode';
 import fs from 'fs';
-import path from 'path';
 
 const app = express();
 
@@ -25,20 +23,14 @@ if (typeof initDb === 'function') {
 // ==========================================
 // GERENCIAMENTO MULTI-USUÁRIO DA SESSÃO BAILEYS
 // ==========================================
-const activeSessions = {}; // Estrutura: { [userId]: { sock, status, qr } }
+const activeSessions = {}; 
 
 async function getOrCreateWhatsAppSession(userId) {
-    console.log(`\n========================================`);
-    console.log(`[WHATSAPP SESSION] Requisitando sessão para o User ID: ${userId}`);
-
     if (activeSessions[userId]?.sock) {
-        console.log(`[WHATSAPP SESSION] Sessão em memória já existe para o usuário: ${userId}`);
         return activeSessions[userId];
     }
 
     const sessionPath = `auth_info_baileys_${userId}`;
-    console.log(`[WHATSAPP SESSION] Carregando pasta de autenticação no disco: ${sessionPath}`);
-
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
     const sock = makeWASocket({
@@ -63,9 +55,8 @@ async function getOrCreateWhatsAppSession(userId) {
                     margin: 2,
                     scale: 6
                 });
-                console.log(`[WHATSAPP QR] 📷 Novo QR Code gerado e convertido para Base64 para o usuário: ${userId}`);
             } catch (err) {
-                console.error(`[WHATSAPP QR ERROR] Erro ao converter QR Code para Base64 (User ${userId}):`, err);
+                console.error(`[WHATSAPP QR ERROR] (User ${userId}):`, err);
             }
         }
 
@@ -73,7 +64,6 @@ async function getOrCreateWhatsAppSession(userId) {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             activeSessions[userId].status = 'disconnected';
             activeSessions[userId].qr = null;
-            console.log(`[WHATSAPP CONNECTION] Conexão fechada para o usuário ${userId}. Deve reconectar?`, shouldReconnect);
             if (shouldReconnect) {
                 delete activeSessions[userId];
                 getOrCreateWhatsAppSession(userId);
@@ -81,7 +71,7 @@ async function getOrCreateWhatsAppSession(userId) {
         } else if (connection === 'open') {
             activeSessions[userId].status = 'connected';
             activeSessions[userId].qr = null;
-            console.log(`[WHATSAPP CONNECTION] ✅ WhatsApp conectado com SUCESSO para o usuário isolado: ${userId}!`);
+            console.log(`[WHATSAPP] Conectado com sucesso para o usuário isolado: ${userId}`);
         }
     });
 
@@ -94,7 +84,6 @@ async function getOrCreateWhatsAppSession(userId) {
 // CRON JOB AUTOMÁTICO DE LEMBRETES DE CASHBACK
 // ==========================================
 cron.schedule('0 9 * * *', async () => {
-    console.log('[CRON] Executando verificação diária de lembretes de cashback...');
     try {
         const customersRes = await pool.query('SELECT * FROM customers WHERE cashback > 0 AND (cashback_expiry IS NOT NULL OR cashback_expiration_date IS NOT NULL)');
         for (const customer of customersRes.rows) {
@@ -132,19 +121,17 @@ cron.schedule('0 9 * * *', async () => {
                         .replace(/{vencimento}/g, expiryDate.toLocaleDateString('pt-BR'));
 
                     await session.sock.sendMessage(`55${phoneClean}@s.whatsapp.net`, { text: message });
-                    console.log(`[CRON] Lembrete automático enviado para ${customer.name} (${phoneClean}) - Restam ${diffDays} dias.`);
                 }
             }
         }
     } catch (err) {
-        console.error('[CRON ERROR] Erro ao processar lembretes automáticos de cashback:', err);
+        console.error('[CRON ERROR]', err);
     }
 });
 
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        console.log(`[LOGIN] Tentativa de login para o e-mail: ${email}`);
         
         let result = await pool.query(
             'SELECT id, name, email, password FROM users WHERE email = $1',
@@ -153,7 +140,7 @@ app.post('/api/login', async (req, res) => {
 
         let user;
         if (result.rows.length === 0) {
-            const newId = String(Date.now());
+            const newId = crypto.randomUUID();
             const hashedPassword = await bcrypt.hash(password || '123456', 10);
             
             await pool.query(
@@ -173,17 +160,15 @@ app.post('/api/login', async (req, res) => {
         const senhaValida = await bcrypt.compare(password, user.password);
 
         if (!senhaValida) {
-            console.warn(`[LOGIN WARNING] Senha inválida para o e-mail: ${email}`);
             return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
         }
 
-        console.log(`[LOGIN SUCCESS] Usuário autenticado com ID: ${user.id} (${user.email})`);
         return res.status(200).json({
             token: 'jwt_token_' + user.id,
             user: { id: user.id, name: user.name, email: user.email }
         });
     } catch (error) {
-        console.error('[LOGIN ERROR] Erro interno no login:', error);
+        console.error('[LOGIN ERROR]:', error);
         return res.status(500).json({ error: 'Erro interno no servidor.' });
     }
 });
@@ -203,11 +188,9 @@ const authMiddleware = (req, res, next) => {
     }
 
     if (!finalUserId) {
-        console.warn(`[AUTH SECURITY] Requisição bloqueada na rota ${req.method} ${req.originalUrl}: Usuário não autenticado ou ID ausente.`);
         return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
 
-    console.log(`[AUTH SECURITY] Request autorizado | Rota: ${req.method} ${req.originalUrl} | User ID identificado: ${finalUserId}`);
     req.user = { id: finalUserId };
     next();
 };
@@ -291,7 +274,8 @@ const handlePostCustomer = async (req, res) => {
         const userId = req.user.id;
         const { id, name, nome, phone, telefone, cpf, data_aniversario, birthDate, cashback, cashback_expiry, cashbackExpiry, cashback_expiration_date, cashbackExpirationDate, cashback_lost, cashbackLost, status, status_mensalidade, statusMensalidade, data_vencimento, dataVencimento, valor_mensalidade, valorMensalidade } = req.body;
         
-        const clienteId = id || 'c' + Date.now();
+        // Geração segura de ID por UUID para evitar colisões simultâneas
+        const clienteId = id || crypto.randomUUID();
         const nomeFinal = name || nome || 'Cliente';
         const telefoneFinal = phone || telefone || '';
         const statusMensalidadeFinal = status_mensalidade || statusMensalidade || 'Pendente (Não Pago)';
@@ -301,7 +285,6 @@ const handlePostCustomer = async (req, res) => {
         const expiryFinal = cashback_expiration_date || cashbackExpirationDate || cashback_expiry || cashbackExpiry || null;
         const lostFinal = cashback_lost !== undefined ? cashback_lost : (cashbackLost !== undefined ? cashbackLost : 0);
         
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(
             `INSERT INTO customers (id, user_id, name, phone, cpf, data_aniversario, cashback, cashback_expiration_date, cashback_expiry, cashback_lost, status, status_mensalidade, data_vencimento, valor_mensalidade) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -386,7 +369,7 @@ app.post('/api/clientes', authMiddleware, handlePostCustomer);
 app.delete('/api/clientes/:id', authMiddleware, handleDeleteCustomer);
 
 // ==========================================
-// CONFIGURAÇÕES DE PDV, CASHBACK E LEMBRETES POR USUÁRIO
+// CONFIGURAÇÕES DE PDV, CASHBACK E LEMBRETES
 // ==========================================
 app.get('/api/pdv/config', authMiddleware, async (req, res) => {
     try {
@@ -447,7 +430,6 @@ app.get('/api/cashback-config', authMiddleware, async (req, res) => {
             cashbackMessage: 'Oi {nome}, você tem {saldo} em cashback te esperando na nossa loja! Aproveite antes de vencer em {vencimento}. 🎁'
         });
     } catch (e) {
-        console.error('Erro ao buscar config de cashback:', e);
         return res.status(500).json({ error: 'Erro ao buscar configurações de cashback' });
     }
 });
@@ -521,7 +503,7 @@ const handlePostProduct = async (req, res) => {
     try {
         const userId = req.user.id;
         const p = req.body;
-        const prodId = req.params.id || p.id || 'prod_' + Date.now();
+        const prodId = req.params.id || p.id || 'prod_' + crypto.randomUUID();
 
         const vipPriceVal = p.vipPrice !== undefined ? p.vipPrice : p.vip_price;
         const vipPrice3xVal = p.vipPrice3x !== undefined ? p.vipPrice3x : p.vip_price_3x;
@@ -529,7 +511,6 @@ const handlePostProduct = async (req, res) => {
         const imageUrlVal = p.imageUrl !== undefined ? p.imageUrl : p.image_url;
         const stocksVal = p.stocks !== undefined ? p.stocks : p.stock;
 
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(`
             INSERT INTO products (
                 id, user_id, name, category, barcode, code, cost, price, 
@@ -761,7 +742,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const s = req.body;
-        const saleId = s.id || `sale_${Date.now()}`;
+        const saleId = s.id || `sale_${crypto.randomUUID()}`;
         const items = Array.isArray(s.items) ? s.items : [];
         const discountVal = Number(s.discount || 0);
         const subtotalVal = Number(s.subtotal || 0);
@@ -782,7 +763,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
                 }
             }
         } catch (err) {
-            console.warn('[CASHBACK CONFIG WARNING] Usando padrão 3%:', err);
+            console.warn('[CASHBACK CONFIG WARNING]:', err);
         }
 
         const earnedCashback = Number(s.earnedCashback !== undefined ? s.earnedCashback : (s.earned_cashback !== undefined ? s.earned_cashback : (s.cashback_earned !== undefined ? s.cashback_earned : (totalVal * cashbackPct))));
@@ -793,7 +774,6 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
 
         await client.query('BEGIN');
 
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await client.query(`
             INSERT INTO sales (id, user_id, customer_id, customer_name, seller, payment_method, discount, subtotal, total, earned_cashback, cashback_earned, gender, sales_channel, delivery_type, items, date)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, $13, $14, $15)
@@ -885,7 +865,7 @@ app.post('/api/sales', authMiddleware, async (req, res) => {
         return res.status(201).json({ message: 'Venda salva, estoque atualizado e cashback computado com sucesso!', saleId, earnedCashback });
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('Erro ao salvar venda e atualizar estoque/cashback:', error);
+        console.error('Erro ao salvar venda:', error);
         return res.status(500).json({ error: 'Erro interno ao salvar a venda no banco.' });
     } finally {
         client.release();
@@ -923,10 +903,9 @@ app.post('/api/fiados', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const f = req.body;
-        const fiadoId = f.id || `fd_${Date.now()}`;
+        const fiadoId = f.id || `fd_${crypto.randomUUID()}`;
         const installments = typeof f.installments === 'string' ? JSON.parse(f.installments || '[]') : (f.installments || []);
 
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(`
             INSERT INTO fiados (id, user_id, customer_id, customer_name, products, origin, installments)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -986,11 +965,10 @@ const handlePostSeller = async (req, res) => {
     try {
         const userId = req.user.id;
         const { id, name, commissionPct } = req.body;
-        const sellerId = id || 's' + Date.now();
+        const sellerId = id || 's' + crypto.randomUUID();
         const parsedCommission = parseFloat(commissionPct) || 0;
         const sellerName = name ? name.trim() : 'Vendedor';
 
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(`
             INSERT INTO sellers (id, user_id, name, commission_pct)
             VALUES ($1, $2, $3, $4)
@@ -1073,7 +1051,7 @@ app.post('/api/locais', authMiddleware, async (req, res) => {
                 [name, id, userId]
             );
         } else if (name) {
-            const newId = 'loc_' + Date.now();
+            const newId = 'loc_' + crypto.randomUUID();
             await pool.query(
                 'INSERT INTO stock_locations (id, user_id, name) VALUES ($1, $2, $3) ON CONFLICT (id, user_id) DO NOTHING',
                 [newId, userId, name]
@@ -1127,9 +1105,8 @@ app.post('/api/pre-treino/products', authMiddleware, async (req, res) => {
         const { id, name, nome, cost, custo } = req.body;
         const finalName = name || nome || 'Produto';
         const finalCost = cost !== undefined ? cost : (custo !== undefined ? custo : 0);
-        const prodId = id || 'pt_prod_' + Date.now();
+        const prodId = id || 'pt_prod_' + crypto.randomUUID();
         
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(
             `INSERT INTO pre_treino_produtos (id, user_id, name, cost) VALUES ($1, $2, $3, $4)
              ON CONFLICT (id, user_id) DO UPDATE SET name = $3, cost = $4`,
@@ -1187,7 +1164,7 @@ app.post('/api/pre-treino/records', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const r = req.body;
-        const recordId = r.id || 'pt_rec_' + Date.now();
+        const recordId = r.id || 'pt_rec_' + crypto.randomUUID();
         const customerId = r.customerId || r.customer_id || null;
         const nomeCliente = r.customerName || r.nomeCliente || r.nome_cliente || 'Cliente';
         const produtoId = r.productId || r.produto_id || '';
@@ -1196,7 +1173,6 @@ app.post('/api/pre-treino/records', authMiddleware, async (req, res) => {
         const data = r.date || r.data || new Date().toISOString().split('T')[0];
         const horario = r.horario || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-        // Uso da chave composta (id, user_id) no ON CONFLICT
         await pool.query(
             `INSERT INTO pre_treino_registros (id, user_id, customer_id, nome_cliente, produto_id, nome_produto, custo, data, horario)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -1223,36 +1199,30 @@ app.delete('/api/pre-treino/records/:id', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// ROTAS DE WHATSAPP & INTEGRAÇÃO BAILEYS ISOLADAS POR USER_ID
+// ROTAS DE WHATSAPP ISOLADAS POR USER_ID
 // ==========================================
 
 app.get('/api/whatsapp/status', authMiddleware, async (req, res) => {
     const userId = req.user.id;
-    console.log(`[WHATSAPP ROUTE] GET /api/whatsapp/status chamado para o User ID: ${userId}`);
     const session = await getOrCreateWhatsAppSession(userId);
     return res.json({ status: session.status, qr: session.qr });
 });
 
 app.get('/api/whatsapp/qr', authMiddleware, async (req, res) => {
     const userId = req.user.id;
-    console.log(`[WHATSAPP ROUTE] GET /api/whatsapp/qr chamado para o User ID: ${userId}`);
     const session = await getOrCreateWhatsAppSession(userId);
 
     if (session.status === 'connected') {
-        console.log(`[WHATSAPP QR] Tentativa de gerar QR para o usuário ${userId}, mas o WhatsApp já está conectado.`);
         return res.status(400).json({ error: 'WhatsApp já está conectado para este usuário!' });
     }
     if (!session.qr) {
-        console.log(`[WHATSAPP QR] session.qr está nulo para o usuário ${userId}.`);
         return res.status(200).json({ success: false, message: 'QR Code ainda não foi gerado. Aguarde alguns instantes e tente novamente.' });
     }
-    console.log(`[WHATSAPP QR] Enviando QR Code Base64 para o front-end do usuário ${userId}.`);
     return res.json({ success: true, qr: session.qr });
 });
 
 app.post('/api/whatsapp/reset', authMiddleware, async (req, res) => {
     const userId = req.user.id;
-    console.log(`[WHATSAPP ROUTE] POST /api/whatsapp/reset chamado para o User ID: ${userId}`);
 
     try {
         if (activeSessions[userId]?.sock) {
@@ -1268,19 +1238,18 @@ app.post('/api/whatsapp/reset', authMiddleware, async (req, res) => {
         const sessionPath = `auth_info_baileys_${userId}`;
         if (fs.existsSync(sessionPath)) {
             fs.rmSync(sessionPath, { recursive: true, force: true });
-            console.log(`[WHATSAPP RESET] Pasta de sessão ${sessionPath} removida com sucesso.`);
         }
 
         await getOrCreateWhatsAppSession(userId);
 
         return res.json({ success: true, message: 'Sessão reiniciada com sucesso. Escaneie o novo QR Code.' });
     } catch (error) {
-        console.error('[WHATSAPP RESET ERROR]', error);
+        console.error('[WHATSAPP RESET ERROR]:', error);
         return res.status(500).json({ error: 'Erro ao resetar sessão do WhatsApp.' });
     }
 });
 
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
-    console.log(`\n🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`\n🚀 Servidor robusto rodando na porta ${PORT}`);
 });

@@ -40,7 +40,7 @@ export async function initDb() {
       pdv_config JSONB DEFAULT '{}'
     );
 
-    -- Tabelas com Chave Primária Composta (id, user_id) para isolamento multi-usuário correto
+    -- Chave Primária Composta estrita (id, user_id) para garantir isolamento multi-usuário simultâneo
     CREATE TABLE IF NOT EXISTS customers (
       id VARCHAR(255) NOT NULL,
       user_id VARCHAR(255) NOT NULL,
@@ -160,5 +160,5 @@ export async function initDb() {
     );
   `);
 
-  console.log('✅ Banco de dados PostgreSQL inicializado com chaves compostas e isolamento perfeito por usuário!');
+  console.log('✅ Banco de dados PostgreSQL inicializado com chaves compostas restritas para concorrência multi-usuário!');
 }
